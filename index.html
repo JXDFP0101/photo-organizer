@@ -2354,7 +2354,7 @@ async function importBackup(file){
 /* =====================================================================
    云同步：LeanCloud 多设备同步
 ===================================================================== */
-const _CLOUD_DIR = 'photo-organizer';
+const _CLOUD_DIR = '美化成品';
 let _cloudSyncBusy = false, _cloudAutoTimer = null, _cloudFailStreak = 0;
 
 async function loadNetCfgs(){
@@ -2668,7 +2668,10 @@ if ('serviceWorker' in navigator && location.protocol === 'https:'){
   state.netCfgs = await loadNetCfgs();
   await netRender();
   if (state.netCfgs.some(c => c.enabled)) setTimeout(() => cloudSync(false), 1500);
-  setInterval(() => cloudAutoTick(), 60000);
+  setInterval(() => cloudAutoTick(), 20000);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && !_cloudSyncBusy) cloudAutoTick();
+  });
 })();
 </script>
 </body>
