@@ -3086,8 +3086,10 @@ async function syncOnce(cfg, label, onProg){
   try{
     // 确保云端目录存在（群晖 WebDAV 需要父目录）
     if (dir){ try{ await dav(cfg, 'MKCOL', dir); }catch(e){} }
-    // 1. 读取云端清单
-    let manifest = await davGetJson(cfg, 'manifest.json');
+    // 1. 读取云端清单（优先同步目录下的清单；旧版曾写根目录，兼容读取）
+    let manifest = null;
+    try{ manifest = await davGetJson(cfg, cloudP('manifest.json')); }catch(e){}
+    if (!manifest && dir) manifest = await davGetJson(cfg, 'manifest.json');
     if (!manifest || !manifest.photos) manifest = { photos: {} };
     const cloudMap = manifest.photos;
     // 2. 删除同步：本地删过的照片，云端一并删除
@@ -3095,6 +3097,22 @@ async function syncOnce(cfg, label, onProg){
     let removed = 0;
     for (const id of tbs){
       if (cloudMap[id]){
+        try{ await dav(cfg, 'DELETE', cloudP(id + cloudMap[id].ext)); }catch(e){}
+        delete cloudMap[id];
+        removed++;
+      }
+    }
+    // 2.5 云端去重：同一内容的照片只保留一个（历史重复堆积清理）
+    {
+      const seen = new Map();
+      const drop = [];
+      for (const [id, c] of Object.entries(cloudMap)){
+        const key = (c.hash && c.hash !== null) ? ('h:' + c.hash)
+          : ('s:' + (c.size || 0) + ':' + (c.ext || ''));
+        if (seen.has(key)) drop.push(id);
+        else seen.set(key, id);
+      }
+      for (const id of drop){
         try{ await dav(cfg, 'DELETE', cloudP(id + cloudMap[id].ext)); }catch(e){}
         delete cloudMap[id];
         removed++;
@@ -3150,8 +3168,8 @@ async function syncOnce(cfg, label, onProg){
         dn++;
       }
     }
-    // 5. 写回清单
-    const mres = await dav(cfg, 'PUT', 'manifest.json',
+    // 5. 写回清单（写入同步目录；旧版写根目录会被 NAS 拒绝）
+    const mres = await dav(cfg, 'PUT', cloudP('manifest.json'),
       new Blob([JSON.stringify({ photos: cloudMap, updatedAt: Date.now() })], { type: 'application/json' }));
     if (!mres.ok) throw new Error('清单写入失败（' + mres.status + '）');
     if (tbs.length) await saveTombstones([]);
