@@ -354,9 +354,13 @@ input{font-family:inherit;font-size:inherit}
 #lbClose svg{width:18px;height:18px}
 #lbTools{position:absolute;bottom:24px;left:50%;transform:translateX(-50%);display:flex;gap:8px}
 #lbTools button{
-  display:flex;align-items:center;gap:7px;color:#fff;font-size:13px;font-weight:500;
+  display:flex;flex-direction:row;align-items:center;gap:7px;color:#fff;font-size:13px;font-weight:500;
   background:rgba(255,255,255,.12);padding:9px 16px;border-radius:11px;transition:.15s;
+  white-space:nowrap;flex-wrap:nowrap;
 }
+.coll-card.off{opacity:.42;cursor:default;box-shadow:none}
+.coll-card.off:hover{transform:none;box-shadow:none}
+.coll-card .coll-ico{color:var(--accent)}
 #lbTools button:hover{background:rgba(255,255,255,.22)}
 #lbTools button svg{width:15px;height:15px}
 
@@ -539,6 +543,11 @@ input{font-family:inherit;font-size:inherit}
         <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-5.5 7-11a7 7 0 1 0-14 0c0 5.5 7 11 7 11z"/><circle cx="12" cy="10" r="2.6"/></svg></span>
         <span>按地域</span>
         <span class="cnt" id="navRegionCnt"></span>
+      </div>
+      <div class="side-item" data-view="time" id="navTime">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/><circle cx="12" cy="15.5" r="2.2"/><path d="M12 13.5v2l1.5 1"/></svg></span>
+        <span>按时间</span>
+        <span class="cnt" id="navTimeCnt"></span>
       </div>
     </div>
 
@@ -1052,7 +1061,17 @@ function collMeta(){ return state.meta.filter(m => collOf(m) === state.collectio
 function collCount(id){ return state.meta.filter(m => collOf(m) === id).length; }
 
 function viewPhotos(){
-  let list = state.meta.filter(m => collOf(m) === state.collection);
+  let list = state.meta;
+  if (state.view.type === 'time'){
+    if (state.view.year != null){
+      list = list.filter(m => new Date(m.addedAt || Date.now()).getFullYear() === state.view.year);
+      if (state.view.month != null){
+        list = list.filter(m => new Date(m.addedAt || Date.now()).getMonth() + 1 === state.view.month);
+      }
+    }
+  } else {
+    list = list.filter(m => collOf(m) === state.collection);
+  }
   if (state.view.type === 'folder') list = list.filter(m => m.folderId === state.view.folderId);
   else if (state.view.type === 'color') list = list.filter(m => (m.colorName || '未识别') === state.view.colorKey);
   else if (state.view.type === 'smart' && state.view.group) list = list.filter(m => smartKey(m) === state.view.group);
@@ -1094,6 +1113,10 @@ function viewTitleText(){
     if (t.smart === 'region') return '按地域';
     return '按题材';
   }
+  if (t.type === 'time'){
+    if (t.year != null) return t.year + ' 年' + (t.month != null ? ' ' + t.month + ' 月' : '');
+    return '按时间';
+  }
   return '全部照片';
 }
 function viewSubText(){
@@ -1107,6 +1130,7 @@ function viewSubText(){
   }
   if (t.type === 'color') return pre + `${fmtCount(n)} 张照片 · 颜色文件夹`;
   if (t.type === 'folder') return pre + `${fmtCount(n)} 张照片 · 自定义文件夹`;
+  if (t.type === 'time') return '按导入时间 · ' + `${fmtCount(n)} 张照片`;
   return pre + `${fmtCount(n)} 张照片`;
 }
 
@@ -1139,7 +1163,16 @@ function renderTopbar(){
   }
   // 组内返回条 / 智能相簿操作条
   const gb = $('#groupBar');
-  if (state.view.type === 'smart'){
+  if (state.view.type === 'time' && (state.view.year != null || state.view.month != null)){
+    gb.style.display = 'flex';
+    gb.innerHTML = '<button class="gb-back" id="gbBack"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>返回上一级</button>' +
+      '<span class="gb-name">' + esc(viewTitleText()) + '</span>';
+    $('#gbBack').onclick = () => {
+      if (state.view.month != null) state.view.month = null;
+      else state.view.year = null;
+      renderAll();
+    };
+  } else if (state.view.type === 'smart'){
     gb.style.display = 'flex';
     const back = state.view.group
       ? '<button class="gb-back" id="gbBack"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>返回全部</button>' +
@@ -1199,6 +1232,60 @@ function renderGrid(){
         renderAll();
       };
     });
+    return;
+  }
+
+  if (t.type === 'time'){
+    grid.classList.remove('smart-layout');
+    if (!state.meta.length){
+      showEmpty('还没有照片', emptyDescByView());
+      grid.innerHTML = '';
+      return;
+    }
+    const ymd = m => { const d = new Date(m.addedAt || Date.now()); return { y: d.getFullYear(), mo: d.getMonth() + 1 }; };
+    if (t.year == null){
+      const years = [...new Set(state.meta.map(m => ymd(m).y))].sort((a, b) => b - a);
+      empty.classList.remove('show');
+      grid.innerHTML = '<div class="coll-grid">' + years.map(y => {
+        const n = state.meta.filter(m => ymd(m).y === y).length;
+        return '<div class="coll-card" data-year="' + y + '">' +
+          '<div class="coll-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></svg></div>' +
+          '<div class="coll-name">' + y + ' 年</div>' +
+          '<div class="coll-cnt">' + fmtCount(n) + ' 张照片</div></div>';
+      }).join('') + '</div>';
+      grid.querySelectorAll('[data-year]').forEach(el => {
+        el.onclick = () => { state.view.year = +el.dataset.year; state.view.month = null; renderAll(); };
+      });
+      return;
+    }
+    if (t.month == null){
+      const hasMonth = new Set(state.meta.map(m => { const d = ymd(m); return d.y === t.year ? d.mo : 0; }));
+      empty.classList.remove('show');
+      grid.innerHTML = '<div class="coll-grid">' + Array.from({ length: 12 }, (_, i) => i + 1).map(mo => {
+        const n = state.meta.filter(m => { const d = ymd(m); return d.y === t.year && d.mo === mo; }).length;
+        const on = hasMonth.has(mo);
+        return '<div class="coll-card' + (on ? '' : ' off') + '" data-month="' + mo + '">' +
+          '<div class="coll-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></svg></div>' +
+          '<div class="coll-name">' + mo + ' 月</div>' +
+          '<div class="coll-cnt">' + (on ? fmtCount(n) + ' 张照片' : '无照片') + '</div></div>';
+      }).join('') + '</div>';
+      grid.querySelectorAll('[data-month]').forEach(el => {
+        el.onclick = () => {
+          if (!hasMonth.has(+el.dataset.month)) return;
+          state.view.month = +el.dataset.month;
+          renderAll();
+        };
+      });
+      return;
+    }
+    const tlist = viewPhotos();
+    if (!tlist.length){
+      showEmpty('这个月份还没有照片', emptyDescByView());
+      grid.innerHTML = '';
+      return;
+    }
+    empty.classList.remove('show');
+    grid.innerHTML = tlist.map(m => cardHTML(m, null)).join('');
     return;
   }
 
@@ -1983,6 +2070,7 @@ function bindEvents(){
   $$('.side-item[data-view]').forEach(el => {
     el.addEventListener('click', () => {
       state.view = { type: el.dataset.view, folderId: null, smart: el.dataset.smart || null, group: null, q: '' };
+      if (el.dataset.view === 'time'){ state.view.year = null; state.view.month = null; }
       $('#searchInput').value = '';
       renderAll();
       closeSidebar();
@@ -2735,6 +2823,12 @@ if ('serviceWorker' in navigator && location.protocol === 'https:'){
     state.colls = [{ id: 'default', name: '手绘油画', addedAt: Date.now(), builtin: true }];
     await dbPut(S_COLLS, state.colls[0]);
   }
+  // 预置「水印」题材：手动导入（不自动识别），可正常多端局域网同步；不需要可在题材管理里删除
+  if (!state.colls.some(c => c.name === '水印')){
+    const wm = { id: 'watermark', name: '水印', addedAt: Date.now() };
+    state.colls.push(wm);
+    await dbPut(S_COLLS, wm);
+  }
   state.collection = 'default';
   state.folders = await dbAll(S_FOLDERS);
   const thumbs = await dbAllKind('thumb');
@@ -2744,6 +2838,7 @@ if ('serviceWorker' in navigator && location.protocol === 'https:'){
   refreshSyncInfo();
   state.netCfgs = await loadNetCfgs();
   await netRender();
+  pushServerSettings();
   if (state.netCfgs.some(c => c.enabled)) setTimeout(() => cloudSync(false), 1500);
   setInterval(() => cloudAutoTick(), 20000);
   document.addEventListener('visibilitychange', () => {
