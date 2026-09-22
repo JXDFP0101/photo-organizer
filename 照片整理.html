@@ -682,6 +682,7 @@ function colorNameFromHsl(h, s, l){
 }
 
 const COLOR_ORDER = ['红','橙','黄','绿','青','蓝','紫','粉','棕','灰','黑','白'];
+const COLOR_FOLDERS = ['红','橙','黄','绿','青','蓝','紫','粉','棕']; // 整理时只建彩色文件夹
 const COLOR_HEX = {
   '红':'#ff453a','橙':'#ff9f0a','黄':'#ffd60a','绿':'#30d158','青':'#64d2ff',
   '蓝':'#0a84ff','紫':'#bf5af2','粉':'#ff9bd2','棕':'#a2845e','灰':'#8e8e93','黑':'#1c1c1e','白':'#f5f5f7'
@@ -1417,7 +1418,10 @@ function organizeGroups(mode){
   const map = new Map();
   for (const m of state.meta){
     let k;
-    if (mode === 'color') k = m.colorName || '未识别';
+    if (mode === 'color'){
+      k = m.colorName || '未识别';
+      if (!COLOR_FOLDERS.includes(k)) continue; // 黑白灰不建文件夹
+    }
     else if (mode === 'region') k = m.region || '未标注位置';
     else k = m.subjectZh || '未识别';
     if (!map.has(k)) map.set(k, []);
@@ -1479,7 +1483,12 @@ function openOrganize(){
   function showPreview(){
     const groups = organizeGroups(mode).filter(g => g.items.length);
     if (!groups.length){ closeModal(); toast('还没有可整理的照片', 'err'); return; }
-    box.innerHTML = '<h3>整理预览</h3><p class="m-desc">将按以下分组创建文件夹，点击可跳过某组：</p>' +
+    let extraNote = '';
+    if (mode === 'color'){
+      const skipped = state.meta.filter(m => !COLOR_FOLDERS.includes(m.colorName || '未识别')).length;
+      if (skipped) extraNote = '<p class="m-desc" style="color:var(--text-3)">另有 ' + skipped + ' 张黑白灰/未识别照片不创建文件夹，保留在未分类。</p>';
+    }
+    box.innerHTML = '<h3>整理预览</h3><p class="m-desc">将按以下分组创建文件夹，点击可跳过某组：</p>' + extraNote +
       '<ul class="folder-preview" id="fpList">' + groups.map(g => {
         const dot = mode==='color' ? (COLOR_HEX[g.key]||'#8e8e93') : (g.items[0].colorHex||'#8e8e93');
         return '<li data-key="' + esc(g.key) + '" data-off="' + (g.off?'1':'0') + '">' +
