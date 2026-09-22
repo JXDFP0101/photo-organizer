@@ -1332,6 +1332,7 @@ function openCollManage(){
     await dbPut(S_COLLS, { id, name, addedAt: Date.now() });
     state.colls.push({ id, name });
     renderAll();
+    pushServerSettings();
     openCollManage();
   };
   box.querySelectorAll('[data-rn]').forEach(b => {
@@ -1342,6 +1343,7 @@ function openCollManage(){
         c.name = v;
         await dbPut(S_COLLS, c);
         renderAll();
+        pushServerSettings();
         openCollManage();
       });
     };
@@ -1364,6 +1366,7 @@ function openCollManage(){
       }
       if (state.collection === c.id) state.collection = fallback.id;
       renderAll();
+      pushServerSettings();
       openCollManage();
       toast('已删除「' + c.name + '」，照片已归入「' + fallback.name + '」');
     };
@@ -2355,8 +2358,30 @@ async function importBackup(file){
    云同步：LeanCloud 多设备同步
 ===================================================================== */
 const _CLOUD_DIR = '美化成品';
+const _SETTINGS_FILE = '相册设置.json';
 let _cloudSyncBusy = false, _cloudAutoTimer = null, _cloudFailStreak = 0;
 
+async function fetchSettingsFromServer(cfgs){
+  for (const c of cfgs.filter(x => x.enabled)){
+    try{
+      const res = await dav(c, 'GET', _SETTINGS_FILE);
+      if (res.status === 404) continue;
+      if (!res.ok) continue;
+      const s = await res.json();
+      if (s) return s;
+    }catch(e){}
+  }
+  return null;
+}
+async function pushServerSettings(){
+  const cfgs = state.netCfgs.filter(c => c.enabled);
+  if (!cfgs.length) return;
+  const payload = { netCfgs: state.netCfgs, colls: state.colls, savedAt: Date.now() };
+  const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+  for (const c of cfgs){
+    try{ await dav(c, 'PUT', _SETTINGS_FILE, blob); }catch(e){}
+  }
+}
 async function loadNetCfgs(){
   const r = await dbGet(S_SYNC, 'netcfgs');
   let list = r && r.v ? r.v : null;
@@ -2369,6 +2394,30 @@ async function loadNetCfgs(){
     if (oldC && oldC.v) list.push(Object.assign({ id: uid(), name: 'NAS', type: 'nas', enabled: true }, oldC.v));
     if (list.length) await saveNetCfgs(list);
   }
+  // 记忆文档：配置与题材保存在服务器（D:\\相册管理\\相册设置.json），更新后自动读回
+  try{
+    const s = await fetchSettingsFromServer(list);
+    if (s){
+      let changed = false;
+      if (Array.isArray(s.netCfgs) && s.netCfgs.length){
+        list = s.netCfgs;
+        await saveNetCfgs(list);
+        changed = true;
+      }
+      if (Array.isArray(s.colls) && s.colls.length){
+        for (const c of s.colls){
+          if (!state.colls.some(x => x.id === c.id)){
+            state.colls.push(c);
+            await dbPut(S_COLLS, c);
+            changed = true;
+          }
+        }
+      }
+      if (changed) renderAll();
+    }else if (list.length){
+      pushServerSettings();
+    }
+  }catch(e){}
   return list;
 }
 async function saveNetCfgs(v){ await dbPut(S_SYNC, { key: 'netcfgs', v }); }
@@ -2626,6 +2675,7 @@ function openNetEdit(id){
     netRender();
     renderAll();
     closeModal();
+    pushServerSettings();
     toast('配置已保存 · 共 ' + state.netCfgs.length + ' 条');
   };
 }
