@@ -2588,8 +2588,14 @@ async function netRender(){
   const el = $('#netStatus');
   if (el){
     const enabled = state.netCfgs.filter(c => c.enabled).length;
-    const src = (location.protocol === 'file:') ? '本地文件打开（数据与网址不互通）' : (location.origin || '本机');
-    if (!state.netCfgs.length) el.textContent = '当前入口：' + src + ' · 未配置，点「添加配置」添加。';
+    const online = location.origin.indexOf('github.io') >= 0;
+    const src = (location.protocol === 'file:') ? '本地文件打开（数据与网址不互通）'
+      : (online ? '线上浏览版' : (location.origin || '本机'));
+    if (!state.netCfgs.length){
+      el.textContent = online
+        ? '线上是浏览版：你的照片和全部配置保存在电脑本地暂存站（http://mintmilk.local:8090）。请从电脑桌面「照片整理」图标或手机浏览器打开该地址使用完整功能，配置会自动读回。'
+        : '当前入口：' + src + ' · 未配置，点「添加配置」添加。';
+    }
     else el.textContent = '当前入口：' + src + ' · 已配置 ' + state.netCfgs.length + ' 个 · 启用 ' + enabled + ' 个';
   }
   renderNetList();
