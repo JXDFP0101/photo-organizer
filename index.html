@@ -2424,8 +2424,9 @@ async function netRender(){
   const el = $('#netStatus');
   if (el){
     const enabled = state.netCfgs.filter(c => c.enabled).length;
-    if (!state.netCfgs.length) el.textContent = '未配置。可添加多个网络配置：平时暂存站、家里暂存站、NAS 等，同步时自动逐个尝试，可达即同步。';
-    else el.textContent = '已配置 ' + state.netCfgs.length + ' 个 · 启用 ' + enabled + ' 个 · 自动逐个尝试同步';
+    const src = (location.protocol === 'file:') ? '本地文件打开（数据与网址不互通）' : (location.origin || '本机');
+    if (!state.netCfgs.length) el.textContent = '当前入口：' + src + ' · 未配置，点「添加配置」添加。';
+    else el.textContent = '当前入口：' + src + ' · 已配置 ' + state.netCfgs.length + ' 个 · 启用 ' + enabled + ' 个';
   }
   renderNetList();
 }
@@ -2616,11 +2617,16 @@ function openNetEdit(id){
     };
     if (c) Object.assign(c, obj);
     else state.netCfgs.push(obj);
-    await saveNetCfgs();
+    try{
+      await saveNetCfgs();
+    }catch(err){
+      toast('保存失败（浏览器存储异常）：' + ((err && err.message) || err), 'err');
+      return;
+    }
     netRender();
     renderAll();
     closeModal();
-    toast('配置已保存');
+    toast('配置已保存 · 共 ' + state.netCfgs.length + ' 条');
   };
 }
 
