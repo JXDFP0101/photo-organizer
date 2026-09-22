@@ -119,6 +119,14 @@ input{font-family:inherit;font-size:inherit}
 .side-foot{padding:10px 10px 2px;border-top:1px solid var(--border);margin-top:10px}
 .side-foot .st-tip{font-size:11px;color:var(--text-3);line-height:1.6}
 .side-foot .st-tip b{color:var(--text-2);font-weight:500}
+.sync-card{margin:10px 0 4px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 12px}
+.sync-title{font-size:11px;font-weight:600;color:var(--text-3);letter-spacing:.3px;margin-bottom:6px}
+.sync-row{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--text-2);line-height:1.9}
+.sync-row b{color:var(--text);font-weight:600}
+.sync-note{font-size:10.5px;color:var(--text-3);line-height:1.55;margin-top:4px}
+.sync-btns{display:flex;gap:8px;margin-top:8px}
+.sync-btns button,.sync-import{flex:1;text-align:center;font-size:12px;padding:6px 0;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--accent);cursor:pointer;transition:.15s;font-family:inherit}
+.sync-btns button:hover,.sync-import:hover{background:var(--accent-soft)}
 
 /* 拖入文件夹高亮 */
 .folder-drag{background:var(--accent-soft)!important;color:var(--accent)!important}
@@ -482,6 +490,17 @@ input{font-family:inherit;font-size:inherit}
       <ul id="folderList"></ul>
       <div class="side-foot">
         <div class="st-tip">照片按 10 大色系自动分类，无需手动建文件夹。照片全部保存在本地浏览器，不会上传到任何服务器；清理浏览器数据会清空相册。</div>
+        <div class="sync-card">
+          <div class="sync-title">数据与同步</div>
+          <div class="sync-row"><span>本地占用</span><b id="syncStorage">—</b></div>
+          <div class="sync-row"><span>持久保存</span><b id="syncPersist">—</b></div>
+          <div class="sync-note" id="syncNote">网址、桌面快捷方式与安装版读取同一份本地数据，自动同步；离线也可浏览。</div>
+          <div class="sync-btns">
+            <button id="btnExport" title="把全部照片和分类信息打包下载，可导入到其他设备或版本">导出备份</button>
+            <label for="importFile" class="sync-import" title="从备份文件恢复相册">导入备份</label>
+            <input type="file" id="importFile" accept=".zip,application/zip" hidden>
+          </div>
+        </div>
       </div>
     </div>
   </aside>
@@ -1208,7 +1227,26 @@ async function makeThumb(img){
   return thumb;
 }
 
-async function processOne(file){
+/* 内容哈希：https 下用 SHA-256；本地 file:// 等环境降级为 FNV-1a */
+async function fileSHA(file){
+  if (crypto && crypto.subtle){
+    try{
+      const buf = await file.arrayBuffer();
+      const dg = await crypto.subtle.digest('SHA-256', buf);
+      return 's' + Array.from(new Uint8Array(dg)).map(b => b.toString(16).padStart(2, '0')).join('');
+    }catch(e){}
+  }
+  const buf = await file.arrayBuffer();
+  const u8 = new Uint8Array(buf);
+  let h1 = 0x811c9dc5, h2 = 0x01000193;
+  for (let i = 0; i < u8.length; i++){
+    h1 = Math.imul(h1 ^ u8[i], 0x01000193) >>> 0;
+    h2 = Math.imul(h2 ^ u8[i], 0x85ebca6b) >>> 0;
+  }
+  return 'f' + h1.toString(16).padStart(8, '0') + h2.toString(16).padStart(8, '0');
+}
+
+async function processOne(file, hash){
   const url = URL.createObjectURL(file);
   let img = null;
   try{ img = await loadImage(url); }catch(e){}
@@ -1219,6 +1257,7 @@ async function processOne(file){
   const id = uid();
   const m = {
     id, name: file.name, addedAt: Date.now(), folderId: null,
+    hash: hash || null,
     width: img.naturalWidth, height: img.naturalHeight,
     colorHex: color.hex, colorName: color.name,
     gps, region: null, subjectZh: null, subject: null,
@@ -1239,11 +1278,18 @@ async function handleFiles(fileList){
   bar.classList.add('show');
   const fill = bar.querySelector('.ub-fill');
   fill.style.width = '2%';
-  let ok = 0, fail = 0;
+  let ok = 0, fail = 0, dup = 0;
+  const seen = new Set();
   for (let i = 0; i < files.length; i++){
     fill.style.width = Math.round((i / files.length) * 96) + '%';
     try{
-      await processOne(files[i]);
+      const hash = await fileSHA(files[i]);
+      if (seen.has(hash) || state.meta.some(m => m.hash === hash)){
+        dup++;
+        continue;
+      }
+      seen.add(hash);
+      await processOne(files[i], hash);
       ok++;
     }catch(e){ fail++; }
     await sleep(0);
@@ -1251,7 +1297,10 @@ async function handleFiles(fileList){
   fill.style.width = '100%';
   setTimeout(() => bar.classList.remove('show'), 400);
   renderAll();
-  toast(ok ? '已上传 ' + ok + ' 张照片' + (fail ? '，' + fail + ' 张无法读取' : '') : '上传失败，请检查文件格式', fail && !ok ? 'err' : 'ok');
+  toast(
+    ok ? '已上传 ' + ok + ' 张照片' + (dup ? '，跳过 ' + dup + ' 张重复' : '') + (fail ? '，' + fail + ' 张无法读取' : '') : '上传失败，请检查文件格式',
+    fail && !ok ? 'err' : 'ok'
+  );
 }
 
 /* =====================================================================
@@ -1748,6 +1797,12 @@ function bindEvents(){
     }
     dragPhotoId = null;
   });
+  // 数据与同步：导出 / 导入备份
+  $('#btnExport').addEventListener('click', exportBackup);
+  $('#importFile').addEventListener('change', e => {
+    if (e.target.files && e.target.files[0]) importBackup(e.target.files[0]);
+    e.target.value = '';
+  });
 
 
   // 上传
@@ -1897,6 +1952,126 @@ function bindEvents(){
 }
 
 /* =====================================================================
+   数据与同步：本地存储信息 / 备份导出导入
+===================================================================== */
+function fmtBytes(n){
+  if (n >= 1073741824) return (n / 1073741824).toFixed(1) + ' GB';
+  if (n >= 1048576) return (n / 1048576).toFixed(1) + ' MB';
+  if (n >= 1024) return (n / 1024).toFixed(0) + ' KB';
+  return n + ' B';
+}
+
+async function refreshSyncInfo(){
+  const el = $('#syncStorage');
+  if (el && navigator.storage && navigator.storage.estimate){
+    try{
+      const est = await navigator.storage.estimate();
+      el.textContent = fmtBytes(est.usage || 0) + ' / ' + fmtBytes(est.quota || 0);
+    }catch(e){}
+  }
+  const ep = $('#syncPersist');
+  if (ep && navigator.storage && navigator.storage.persisted){
+    try{ ep.textContent = (await navigator.storage.persisted()) ? '已开启' : '自动'; }catch(e){}
+  }
+  const note = $('#syncNote');
+  if (note && location.protocol === 'file:'){
+    note.textContent = '当前是本地离线副本，数据与线上网址不互通。建议用桌面快捷方式或线上网址打开，数据自动同步。';
+  }
+}
+
+function loadScript(src){
+  return new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = res;
+    s.onerror = () => rej(new Error('load'));
+    document.head.appendChild(s);
+  });
+}
+
+async function ensureJSZip(){
+  if (!window.JSZip){
+    await loadScript('https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js');
+  }
+}
+
+async function exportBackup(){
+  if (!state.meta.length){ toast('相册还是空的，暂无内容可备份', 'err'); return; }
+  try{ await ensureJSZip(); }
+  catch(e){ toast('备份组件加载失败，请检查网络', 'err'); return; }
+  const zip = new JSZip();
+  zip.file('meta.json', JSON.stringify(state.meta));
+  const fld = zip.folder('photos');
+  let n = 0;
+  for (const m of state.meta){
+    try{
+      const rec = await dbGet(S_BLOBS, m.id + ':f');
+      if (rec && rec.blob){
+        const ext = (m.name.match(/\.\w+$/) || ['.jpg'])[0];
+        fld.file(m.id + ext, rec.blob);
+        n++;
+      }
+    }catch(e){}
+  }
+  toast('正在打包 ' + n + ' 张照片…');
+  const blob = await zip.generateAsync({ type: 'blob' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = '照片备份-' + new Date().toISOString().slice(0, 10) + '.zip';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 6000);
+}
+
+async function makeThumbFromBlob(blob){
+  const url = URL.createObjectURL(blob);
+  try{
+    const img = await loadImage(url);
+    return await makeThumb(img);
+  }finally{
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function importBackup(file){
+  try{ await ensureJSZip(); }
+  catch(e){ toast('备份组件加载失败，请检查网络', 'err'); return; }
+  let zip;
+  try{ zip = await JSZip.loadAsync(file); }
+  catch(e){ toast('无法读取备份文件', 'err'); return; }
+  const metaEntry = zip.file('meta.json');
+  const photos = zip.folder('photos');
+  if (!metaEntry || !photos){ toast('不是有效的照片备份文件', 'err'); return; }
+  let metaList;
+  try{ metaList = JSON.parse(await metaEntry.async('text')); }
+  catch(e){ toast('备份文件已损坏', 'err'); return; }
+  const existing = new Set(state.meta.map(m => m.hash).filter(Boolean));
+  let ok = 0, dup = 0, miss = 0;
+  toast('正在导入 ' + metaList.length + ' 条记录…');
+  for (const m of metaList){
+    if (m.hash && existing.has(m.hash)){ dup++; continue; }
+    const ext = ((m.name && m.name.match(/\.\w+$/)) || ['.jpg'])[0];
+    const entry = photos.file(m.id + ext);
+    if (!entry){ miss++; continue; }
+    try{
+      const blob = await entry.async('blob');
+      const nid = uid();
+      const nm = Object.assign({}, m, { id: nid });
+      await dbPut(S_META, nm);
+      await dbPut(S_BLOBS, { id: nid + ':t', kind: 'thumb', photoId: nid, blob: await makeThumbFromBlob(blob) });
+      await dbPut(S_BLOBS, { id: nid + ':f', kind: 'full', photoId: nid, blob: blob });
+      state.meta.push(nm);
+      if (nm.hash) existing.add(nm.hash);
+      ok++;
+    }catch(e){ miss++; }
+    await sleep(0);
+  }
+  renderAll();
+  refreshSyncInfo();
+  toast('导入 ' + ok + ' 张照片' + (dup ? '，跳过重复 ' + dup + ' 张' : '') + (miss ? '，' + miss + ' 张无法还原' : ''));
+}
+
+/* =====================================================================
    PWA：桌面应用支持（仅线上 https 生效；本地双击打开不会注册）
 ===================================================================== */
 if ('serviceWorker' in navigator && location.protocol === 'https:'){
@@ -1924,6 +2099,7 @@ if ('serviceWorker' in navigator && location.protocol === 'https:'){
   for (const t of thumbs) state.thumbs.set(t.photoId, URL.createObjectURL(t.blob));
   bindEvents();
   renderAll();
+  refreshSyncInfo();
 })();
 </script>
 </body>
