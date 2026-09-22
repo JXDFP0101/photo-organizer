@@ -94,6 +94,10 @@ input{font-family:inherit;font-size:inherit}
 #subBar .sub-chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
 #subBar .sub-chip .sc-cnt{font-size:11px;opacity:.65;font-weight:500}
 #subBar .sub-chip.add svg{width:13px;height:13px;stroke-width:2.2}
+#syncProg{padding:9px 11px;border-radius:11px;background:rgba(0,0,0,.03)}
+#syncProg .sp-bar{height:5px;border-radius:99px;background:rgba(0,0,0,.08);overflow:hidden}
+#syncProg .sp-fill{height:100%;width:0%;background:var(--accent);border-radius:99px;transition:width .25s}
+#syncProg .sp-txt{margin-top:6px;font-size:11px;color:var(--text-3,#8e8e93);line-height:1.4}
 .coll-card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:30px 16px 26px;text-align:center;cursor:pointer;box-shadow:var(--shadow-sm);transition:transform .18s cubic-bezier(.3,0,.2,1),box-shadow .18s}
 .coll-card:hover{box-shadow:var(--shadow);transform:translateY(-2px)}
 .coll-ico{width:56px;height:56px;border-radius:16px;background:var(--accent-soft);color:var(--accent);display:flex;align-items:center;justify-content:center;margin:0 auto 14px}
@@ -578,6 +582,7 @@ input{font-family:inherit;font-size:inherit}
           <div class="sync-title">网络同步（暂存站 / NAS）</div>
           <div class="sync-note" id="netStatus">未配置。可添加多个网络配置（平时暂存站、家里暂存站、NAS 等），同步时自动逐个尝试，哪个可达就同步哪个。</div>
           <div id="netList" style="margin-top:8px"></div>
+          <div id="syncProg" style="display:none;margin-top:10px"><div class="sp-bar"><div class="sp-fill" id="spFill"></div></div><div class="sp-txt" id="spTxt"></div></div>
           <div class="sync-btns">
             <button id="btnNetAdd">添加配置</button>
             <button id="btnNetSync">立即同步</button>
@@ -626,7 +631,6 @@ input{font-family:inherit;font-size:inherit}
 
     <div id="content">
       <div id="groupBar" style="display:none"></div>
-      <div id="subBar" style="display:none"></div>
       <div id="grid"></div>
       <div id="emptyState" class="show">
         <div class="es-ic">
@@ -1079,7 +1083,7 @@ function viewPhotos(){
     }
   } else {
     list = list.filter(m => collOf(m) === state.collection);
-    if (state.view.sub != null){
+    if (state.view.subMode === 'photos' && state.view.sub != null){
       list = list.filter(m => (m.sub || '') === state.view.sub);
     }
   }
@@ -1195,6 +1199,17 @@ function renderTopbar(){
     gb.innerHTML = back + ra;
     const bk = $('#gbBack');
     if (bk && state.view.group) bk.onclick = () => { state.view.group = null; renderAll(); };
+  } else if (state.view.type === 'all' && state.view.subFromBoard){
+    gb.style.display = 'flex';
+    const subName = state.view.sub === undefined ? '全部' : (state.view.sub === '' ? '未分类' : state.view.sub);
+    gb.innerHTML = '<button class="gb-back" id="gbBack"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>返回子目录</button>' +
+      '<span class="gb-name">' + esc(subName) + '</span>';
+    $('#gbBack').onclick = () => {
+      state.view.subMode = 'board';
+      state.view.sub = null;
+      state.view.subFromBoard = false;
+      renderAll();
+    };
   } else {
     gb.style.display = 'none';
     gb.innerHTML = '';
@@ -1236,11 +1251,59 @@ function renderGrid(){
     grid.querySelectorAll('.coll-card').forEach(el => {
       el.onclick = () => {
         state.collection = el.dataset.cid;
-        state.view = { type:'all', folderId:null, smart:null, group:null, q:'' };
+        const cc = state.colls.find(x => x.id === state.collection);
+        const hasSubs = !!(cc && cc.subs && cc.subs.length);
+        state.view = { type:'all', folderId:null, smart:null, group:null, q:'',
+          subMode: hasSubs ? 'board' : 'photos', sub: hasSubs ? null : undefined, subFromBoard: false };
         $('#searchInput').value = '';
         renderAll();
       };
     });
+    return;
+  }
+
+  if (t.type === 'all' && t.subMode === 'board'){
+    grid.classList.remove('smart-layout');
+    empty.classList.remove('show');
+    const cur = state.colls.find(x => x.id === state.collection);
+    const subs = (cur && cur.subs) || [];
+    const cntOf = sub => state.meta.filter(m => collOf(m) === state.collection && (m.sub || '') === sub).length;
+    const card = (label, sub, count, icon) =>
+      '<div class="coll-card" data-bsub="' + esc(sub) + '">' +
+      '<div class="coll-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round">' + icon + '</svg></div>' +
+      '<div class="coll-name">' + esc(label) + '</div>' +
+      '<div class="coll-cnt">' + fmtCount(count) + ' 张照片</div></div>';
+    const nAll = state.meta.filter(m => collOf(m) === state.collection).length;
+    const fico = '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/>';
+    const uico = '<circle cx="12" cy="12" r="9"/><path d="M12 7v10M7 12h10"/>';
+    let html = '<div class="coll-grid">';
+    html += card('全部', '__all__', nAll, fico);
+    html += card('未分类', '', cntOf(''), uico);
+    for (const s of subs) html += card(s, s, cntOf(s), fico);
+    html += '<div class="coll-card add-sub" id="btnAddSubCard">' +
+      '<div class="coll-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></div>' +
+      '<div class="coll-name">新建子目录</div><div class="coll-cnt">给「' + esc(cur ? cur.name : '') + '」添加子目录</div></div></div>';
+    grid.innerHTML = html;
+    grid.querySelectorAll('[data-bsub]').forEach(el => {
+      el.onclick = () => {
+        const v = el.dataset.bsub;
+        state.view.sub = (v === '__all__') ? undefined : v;
+        state.view.subMode = 'photos';
+        state.view.subFromBoard = true;
+        renderAll();
+      };
+    });
+    const addBtn = $('#btnAddSubCard');
+    if (addBtn) addBtn.onclick = () => {
+      askName('新建子目录', '为「' + (cur ? cur.name : '') + '」添加子目录，照片可归入其中。', '', async v => {
+        if (!cur.subs) cur.subs = [];
+        if (cur.subs.includes(v)){ toast('该子目录已存在', 'err'); return; }
+        cur.subs.push(v);
+        await dbPut(S_COLLS, cur);
+        pushServerSettings();
+        renderAll();
+      });
+    };
     return;
   }
 
@@ -2187,7 +2250,10 @@ function bindEvents(){
     const item = e.target.closest('.coll-item');
     if (!item) return;
     state.collection = item.dataset.cid;
-    state.view = { type:'all', folderId:null, smart:null, group:null, q:'' };
+    const cc = state.colls.find(x => x.id === state.collection);
+    const hasSubs = !!(cc && cc.subs && cc.subs.length);
+    state.view = { type:'all', folderId:null, smart:null, group:null, q:'',
+      subMode: hasSubs ? 'board' : 'photos', sub: hasSubs ? null : undefined, subFromBoard: false };
     $('#searchInput').value = '';
     renderAll();
     closeSidebar();
@@ -2707,7 +2773,21 @@ function setCloudStatus(txt, kind){
   const el = $('#netStatus');
   if (!el) return;
   el.textContent = txt;
-  el.style.color = kind === 'ok' ? '#1d7a3c' : kind === 'err' ? '#d70015' : kind === 'busy' ? 'var(--text-2)' : 'var(--text-3)';
+  el.style.color = kind === 'ok' ? '#1d7a3c' : kind === 'err' ? '#d70015' : kind === 'warn' ? '#b25000' : kind === 'busy' ? 'var(--text-2)' : 'var(--text-3)';
+}
+
+function setSyncProg(pct, txt){
+  const prog = $('#syncProg');
+  if (!prog) return;
+  prog.style.display = 'block';
+  $('#spFill').style.width = Math.max(2, Math.min(100, pct)) + '%';
+  $('#spTxt').textContent = txt || '';
+}
+function clearSyncProg(){
+  const prog = $('#syncProg');
+  if (!prog) return;
+  prog.style.display = 'none';
+  $('#spFill').style.width = '0%';
 }
 
 function renderNetList(){
@@ -2760,7 +2840,7 @@ async function applyDownloaded(cloudId, c, blob){
   state.thumbs.set(nid, URL.createObjectURL(thumb));
 }
 
-async function syncOnce(cfg, label){
+async function syncOnce(cfg, label, onProg){
   setCloudStatus('同步中…（' + label + '）', 'busy');
   try{
     // 确保云端目录存在（群晖 WebDAV 需要父目录）
@@ -2781,7 +2861,11 @@ async function syncOnce(cfg, label){
     }
     // 3. 上传：本地有而云端没有，或本地更新
     let up = 0;
+    const upTotal = state.meta.length;
+    let upIdx = 0;
     for (const m of state.meta){
+      upIdx++;
+      if (onProg) onProg(Math.round(upIdx / Math.max(1, upTotal) * 55), '上传 ' + upIdx + '/' + upTotal + ' · ' + (m.name || '照片'));
       // 跨设备去重：云端已有相同内容的照片则跳过上传
       if (m.hash && Object.values(cloudMap).some(x => x.hash && x.hash === m.hash)) continue;
       const c = cloudMap[m.id];
@@ -2811,7 +2895,11 @@ async function syncOnce(cfg, label){
     }
     // 4. 下载：云端有而本地没有
     let dn = 0;
+    const dnTotal = Object.keys(cloudMap).length;
+    let dnIdx = 0;
     for (const [id, c] of Object.entries(cloudMap)){
+      dnIdx++;
+      if (onProg) onProg(58 + Math.round(dnIdx / Math.max(1, dnTotal) * 37), '检查云端照片 ' + dnIdx + '/' + dnTotal);
       // 跨设备去重：本地已有相同内容的照片则跳过下载
       if (c.hash && state.meta.some(x => x.hash && x.hash === c.hash)) continue;
       if (!state.meta.some(m => m.id === id)){
@@ -2832,39 +2920,49 @@ async function syncOnce(cfg, label){
   }
 }
 
-/* 多网络同步：遍历所有启用的配置（暂存站 / NAS），可达即同步 */
+/* 多网络同步：遍历所有启用的配置（暂存站 / NAS），逐个显示结果 */
 async function cloudSync(manual){
   if (_cloudSyncBusy) return;
   const cfgs = state.netCfgs.filter(c => c.enabled);
   if (!cfgs.length){ if (manual) toast('未配置启用的网络', 'err'); return; }
   _cloudSyncBusy = true;
-  let up = 0, dn = 0, removed = 0, okAny = false, lastMsg = '';
+  let up = 0, dn = 0, removed = 0, okAny = false;
+  const results = [];
+  setSyncProg(2, '准备同步…');
   try{
     for (const c of cfgs){
       try{
-        const r = await syncOnce(c, c.name);
+        const r = await syncOnce(c, c.name, (p, msg) => setSyncProg(p, c.name + ' · ' + msg));
         up += r.up; dn += r.dn; removed += r.removed;
         okAny = true;
+        results.push({ name: c.name, ok: true, msg: '' });
         if (c.type === 'nas') _cloudFailStreak = 0;
       }catch(e){
-        lastMsg = (e && e.message) || e;
+        const msg = (e && e.message) || '连接失败';
+        results.push({ name: c.name, ok: false, msg: msg });
         if (c.type === 'nas') _cloudFailStreak++;
-        // 单个配置失败静默跳过：不在该网络属正常，不影响其他配置
       }
     }
+    clearSyncProg();
     renderAll();
     refreshSyncInfo();
     const parts = [];
     if (up) parts.push('上传 ' + up);
     if (dn) parts.push('下载 ' + dn);
     if (removed) parts.push('清理 ' + removed);
+    const failN = results.filter(r => !r.ok);
     if (okAny){
-      setCloudStatus('已同步 · ' + (parts.join(' · ') || '无变化'), 'ok');
-      if (manual) toast('同步完成：' + (parts.join('，') || '无变化'));
+      let txt = '已同步 · ' + (parts.join(' · ') || '无变化');
+      if (failN.length) txt += ' · ' + failN.map(r => '「' + r.name + '」' + r.msg).join('；');
+      setCloudStatus(txt, failN.length ? 'warn' : 'ok');
+      if (manual){
+        const failTxt = failN.length ? '；' + failN.map(r => r.name + '：' + r.msg).join('；') : '';
+        toast('同步完成：' + (parts.join('，') || '无变化') + failTxt, failN.length ? 'err' : '');
+      }
       return true;
     }
-    setCloudStatus('同步失败：' + (lastMsg || '所有网络配置均不可达'), 'err');
-    if (manual) toast('同步失败，请检查网络配置', 'err');
+    setCloudStatus('同步失败：' + results.map(r => '「' + r.name + '」' + r.msg).join('；'), 'err');
+    if (manual) toast('同步失败：' + results.map(r => r.name + '：' + r.msg).join('；'), 'err');
     return false;
   }finally{
     _cloudSyncBusy = false;
