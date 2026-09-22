@@ -139,7 +139,9 @@ input{font-family:inherit;font-size:inherit}
 .sync-btns button,.sync-import{flex:1;text-align:center;font-size:12px;padding:6px 0;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--accent);cursor:pointer;transition:.15s;font-family:inherit}
 .sync-btns button:hover,.sync-import:hover{background:var(--accent-soft)}
 .sync-in{width:100%;box-sizing:border-box;font-size:12px;padding:7px 9px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);margin-bottom:7px;font-family:inherit;outline:none}
-.net-item{border:1px solid var(--border);border-radius:10px;background:var(--bg);padding:8px 10px;margin-bottom:8px}
+.net-item{border:1px solid var(--border);border-radius:10px;background:var(--bg);padding:8px 10px;margin-bottom:8px;cursor:pointer;transition:border-color .15s,background .15s}
+.net-item:hover{border-color:var(--text-3)}
+.net-item.on{border-color:var(--accent);background:var(--accent-soft)}
 .net-item.off{opacity:.55}
 .net-item .net-top{display:flex;align-items:center;gap:6px}
 .net-item .net-top b{font-size:12.5px;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -2038,7 +2040,8 @@ function bindEvents(){
       if (c){
         c.enabled = sw.checked;
         await saveNetCfgs();
-        renderNetList();
+        netRender();
+        renderAll();
         toast(c.enabled ? '已启用「' + c.name + '」' : '已停用「' + c.name + '」');
       }
       return;
@@ -2052,9 +2055,22 @@ function bindEvents(){
       askConfirm('删除配置「' + c.name + '」？', async () => {
         state.netCfgs = state.netCfgs.filter(x => x.id !== c.id);
         await saveNetCfgs();
+        netRender();
         renderAll();
         toast('已删除配置');
       });
+      return;
+    }
+    // 点击配置行：切换启用 / 停用
+    const row = e.target.closest('.net-item');
+    if (row){
+      const c = state.netCfgs.find(x => x.id === row.dataset.id);
+      if (c){
+        c.enabled = !c.enabled;
+        await saveNetCfgs();
+        renderNetList();
+        toast(c.enabled ? '已启用「' + c.name + '」' : '已停用「' + c.name + '」');
+      }
     }
   });
 
@@ -2395,7 +2411,7 @@ function renderNetList(){
   const el = $('#netList');
   if (!el) return;
   el.innerHTML = state.netCfgs.map(c => {
-    return '<div class="net-item' + (c.enabled ? '' : ' off') + '" data-id="' + c.id + '">' +
+    return '<div class="net-item' + (c.enabled ? ' on' : ' off') + '" data-id="' + c.id + '">' +
       '<div class="net-top"><b>' + esc(c.name) + '</b><span class="net-tag">' + (c.type === 'nas' ? 'NAS' : '暂存站') + '</span>' +
       '<label class="net-sw" title="启用/停用"><input type="checkbox" data-sw="' + c.id + '"' + (c.enabled ? ' checked' : '') + '><span></span></label></div>' +
       '<div class="net-url">' + esc(c.server) + '</div>' +
@@ -2601,6 +2617,7 @@ function openNetEdit(id){
     if (c) Object.assign(c, obj);
     else state.netCfgs.push(obj);
     await saveNetCfgs();
+    netRender();
     renderAll();
     closeModal();
     toast('配置已保存');
