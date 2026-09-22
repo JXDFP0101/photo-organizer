@@ -182,8 +182,12 @@ input{font-family:inherit;font-size:inherit}
 .smart-h{display:flex;align-items:center;gap:9px;margin:0 0 14px;padding:0 2px}
 .smart-block{
   background:var(--surface);border:1px solid var(--border);border-radius:18px;
-  box-shadow:var(--shadow-sm);padding:18px 18px 8px;margin-bottom:22px;
+  box-shadow:var(--shadow-sm);padding:16px 16px 8px;
 }
+/* 分组横向排列：多列并排，减少纵向堆叠 */
+#grid.smart-layout{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:22px;align-items:start}
+#grid.smart-layout .smart-block{margin-bottom:0}
+#grid.smart-layout .grid-sec{grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px}
 .smart-h:first-child{margin-top:0}
 .smart-h .sh-dot{width:10px;height:10px;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(0,0,0,.1)}
 .smart-h .sh-name{font-size:15px;font-weight:600}
@@ -399,6 +403,7 @@ input{font-family:inherit;font-size:inherit}
   #main{width:100%}
   #content{padding:16px 14px 80px}
   #grid,.grid-sec{grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:9px}
+  #grid.smart-layout{grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
   .search-wrap{display:none}
   .tb-btn span.lbl{display:none}
   .tb-btn{padding:0 12px}
@@ -1050,6 +1055,7 @@ function renderGrid(){
   const t = state.view;
 
   if (t.type === 'smart' && !t.group){
+    grid.classList.add('smart-layout');
     const groups = smartGroups();
     if (!groups.length){
       showEmpty('还没有可展示的照片', emptyDescByView());
@@ -1082,6 +1088,7 @@ function renderGrid(){
     grid.innerHTML = '';
     return;
   }
+  grid.classList.remove('smart-layout');
   empty.classList.remove('show');
   grid.innerHTML = list.map(m => cardHTML(m, null)).join('');
 }
