@@ -2841,8 +2841,8 @@ async function detectLan(){
 }
 function openLanDialog(){
   const box = $('#modalBox');
-  box.innerHTML = '<h3>未连接家中网络</h3>' +
-    '<p class="m-desc">当前是线上浏览模式，照片、配置和同步都保存在家中暂存站，暂无法连接。请连接到家庭 WiFi 后再使用局域网功能。</p>' +
+  box.innerHTML = '<h3>暂存站不在同一局域网</h3>' +
+    '<p class="m-desc">当前设备与暂存站（电脑 / NAS）不在同一个局域网，无法使用完整功能。请让本设备连接到暂存站所在的网络后再使用局域网功能。</p>' +
     '<div class="m-actions"><button class="m-ok" data-close>知道了</button></div>';
   openModal();
 }
@@ -3006,7 +3006,7 @@ async function netRender(){
       : (online ? '线上浏览版' : (location.origin || '本机'));
     if (!state.netCfgs.length){
       el.textContent = online
-        ? '线上是浏览版：你的照片和全部配置保存在电脑本地暂存站（http://mintmilk.local:8090）。请从电脑桌面「照片整理」图标或手机浏览器打开该地址使用完整功能，配置会自动读回。'
+        ? '线上浏览模式：完整功能需要与暂存站（电脑 / NAS）处于同一局域网；不在同一网络时点「立即同步」会提示。'
         : '当前入口：' + src + ' · 未配置，点「添加配置」添加。';
     }
     else el.textContent = '当前入口：' + src + ' · 已配置 ' + state.netCfgs.length + ' 个 · 启用 ' + enabled + ' 个';
