@@ -1727,7 +1727,9 @@ function bindEvents(){
   // 移动端侧栏
   $('#hamburger').addEventListener('click', () => $('#sidebar').classList.toggle('open'));
   $('#sideClose').addEventListener('click', closeSidebar);
-  $('#main').addEventListener('click', () => { if ($('#sidebar').classList.contains('open')) closeSidebar(); });
+  $('#main').addEventListener('click', e => {
+    if ($('#sidebar').classList.contains('open') && !e.target.closest('#hamburger')) closeSidebar();
+  });
 
   // 拖拽上传
   window.addEventListener('dragenter', e => {
