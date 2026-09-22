@@ -85,7 +85,7 @@ input{font-family:inherit;font-size:inherit}
 .side-sec-h button{width:26px;height:26px;border-radius:7px;display:flex;align-items:center;justify-content:center;color:var(--text-3);transition:.15s}
 .side-sec-h button:hover{background:var(--accent-soft);color:var(--accent)}
 .side-sec-h button svg{width:15px;height:15px}
-/* 大分类总览卡片 */
+/* 题材总览卡片 */
 .coll-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;width:100%;padding:4px}
 .coll-card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:30px 16px 26px;text-align:center;cursor:pointer;box-shadow:var(--shadow-sm);transition:transform .18s cubic-bezier(.3,0,.2,1),box-shadow .18s}
 .coll-card:hover{box-shadow:var(--shadow);transform:translateY(-2px)}
@@ -492,8 +492,8 @@ input{font-family:inherit;font-size:inherit}
 
     <div class="side-sec">
       <div class="side-sec-h">
-        <span>大分类</span>
-        <button id="btnCollManage" title="管理大分类">
+        <span>题材</span>
+        <button id="btnCollManage" title="管理题材">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
         </button>
       </div>
@@ -516,11 +516,6 @@ input{font-family:inherit;font-size:inherit}
         <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-5.5 7-11a7 7 0 1 0-14 0c0 5.5 7 11 7 11z"/><circle cx="12" cy="10" r="2.6"/></svg></span>
         <span>按地域</span>
         <span class="cnt" id="navRegionCnt"></span>
-      </div>
-      <div class="side-item" data-view="smart" data-smart="subject" id="navSubject">
-        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15.5l-1.9-4.6L5.5 9l4.6-1.4L12 3z"/><path d="M19 14l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8.8-2z"/><path d="M5 15l.6 1.6 1.6.6-1.6.6L5 19.4l-.6-1.6-1.6-.6 1.6-.6L5 15z"/></svg></span>
-        <span>按题材</span>
-        <span class="cnt" id="navSubjectCnt"></span>
       </div>
     </div>
 
@@ -567,9 +562,9 @@ input{font-family:inherit;font-size:inherit}
       <button id="hamburger" title="菜单">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
       </button>
-      <button class="tb-btn btn-ghost" id="btnColls" title="大分类">
+      <button class="tb-btn btn-ghost" id="btnColls" title="题材">
         <svg id="btnCollsIco" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
-        <span class="lbl" id="btnCollsLbl">大分类</span>
+        <span class="lbl" id="btnCollsLbl">题材</span>
       </button>
       <div style="min-width:0">
         <div id="viewTitle">全部照片</div>
@@ -578,7 +573,7 @@ input{font-family:inherit;font-size:inherit}
       <div class="top-spacer"></div>
       <div class="search-wrap">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-        <input id="searchInput" type="text" placeholder="搜索名称、颜色、地域、题材" autocomplete="off">
+        <input id="searchInput" type="text" placeholder="搜索名称、颜色、地域" autocomplete="off">
         <button id="searchClear" title="清除">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
         </button>
@@ -736,8 +731,8 @@ function dbAllKind(kind){
 ===================================================================== */
 const state = {
   meta: [],            // 照片元数据
-  colls: [],           // 大分类
-  collection: 'default', // 当前大分类 id
+  colls: [],           // 题材
+  collection: 'default', // 当前题材 id
   folders: [],         // 文件夹
   thumbs: new Map(),   // photoId -> objectURL（缩略图）
   view: { type:'all', folderId:null, smart:null, group:null, q:'' },
@@ -1072,7 +1067,7 @@ function smartGroups(){
 
 function viewTitleText(){
   const t = state.view;
-  if (t.type === 'collections') return '大分类';
+  if (t.type === 'collections') return '题材';
   if (t.type === 'color') return t.colorKey || '颜色文件夹';
   if (t.type === 'folder'){
     const f = state.folders.find(x => x.id === t.folderId);
@@ -1088,7 +1083,7 @@ function viewTitleText(){
 function viewSubText(){
   const t = state.view;
   const n = viewPhotos().length;
-  if (t.type === 'collections') return `${state.colls.length} 个大分类 · ${fmtCount(state.meta.length)} 张照片`;
+  if (t.type === 'collections') return `${state.colls.length} 个题材 · ${fmtCount(state.meta.length)} 张照片`;
   const pre = collName(state.collection) + ' · ';
   if (t.type === 'smart' && !t.group){
     const g = smartGroups().length;
@@ -1103,7 +1098,7 @@ function renderTopbar(){
   $('#viewTitle').textContent = viewTitleText();
   $('#viewSub').textContent = viewSubText();
   $('#navAllCnt').textContent = fmtCount(collMeta().length);
-  ['color','region','subject'].forEach(k => {
+  ['color','region'].forEach(k => {
     const el = $('#nav' + k[0].toUpperCase() + k.slice(1) + 'Cnt');
     if (el){
       const n = collMeta().filter(m => smartKeyOf(k, m) !== (k==='region'?'未标注位置':'未识别')).length;
@@ -1116,15 +1111,15 @@ function renderTopbar(){
     const on = v === 'smart' ? (state.view.type==='smart' && state.view.smart===smart) : (state.view.type === v);
     el.classList.toggle('active', on);
   });
-  // 顶栏大分类按钮：大类总览时为返回
+  // 顶栏题材按钮：题材总览时为返回
   const bc = $('#btnColls');
   if (bc){
     const back = state.view.type === 'collections';
     $('#btnCollsIco').innerHTML = back
       ? '<path d="M15 5l-7 7 7 7"/>'
       : '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>';
-    $('#btnCollsLbl').textContent = back ? '返回' : '大分类';
-    bc.title = back ? '返回' : '大分类';
+    $('#btnCollsLbl').textContent = back ? '返回' : '题材';
+    bc.title = back ? '返回' : '题材';
   }
   // 组内返回条 / 智能相簿操作条
   const gb = $('#groupBar');
@@ -1239,7 +1234,7 @@ function emptyTitleByView(){
 function emptyDescByView(){
   const t = state.view;
   if (t.type === 'folder') return '上传照片后，在全部照片里选中它们，拖到侧边栏的这个文件夹，或使用「移动」。';
-  if (t.type === 'smart') return '上传照片后会自动分析颜色；地域需要照片带 GPS 信息；题材识别需要联网加载 AI 模型。';
+  if (t.type === 'smart') return '上传照片后会自动分析颜色；地域需要照片带 GPS 信息。';
   return '拖拽照片到窗口任意位置，或点击「上传照片」选择图片。';
 }
 function showEmpty(title, desc){
@@ -1308,15 +1303,15 @@ function openCollManage(){
       (c.builtin ? '' : '<button class="m-del" data-del="' + c.id + '">删除</button>') +
       '</div>';
   }).join('');
-  box.innerHTML = '<h3>大分类管理</h3>' +
-    '<p class="m-desc">侧边栏顶部就是大分类入口；删除大分类后，其中的照片会归入「' + esc(collName('default')) + '」。</p>' +
-    '<div class="m-list">' + (lis || '<div class="m-empty">暂无大分类</div>') + '</div>' +
-    '<div class="m-add"><input id="newCollName" placeholder="新大分类名称，如：摄影" maxlength="20"><button id="btnAddColl">添加</button></div>' +
+  box.innerHTML = '<h3>题材管理</h3>' +
+    '<p class="m-desc">侧边栏顶部就是题材入口；删除题材后，其中的照片会归入「' + esc(collName('default')) + '」。</p>' +
+    '<div class="m-list">' + (lis || '<div class="m-empty">暂无题材</div>') + '</div>' +
+    '<div class="m-add"><input id="newCollName" placeholder="新题材名称，如：摄影" maxlength="20"><button id="btnAddColl">添加</button></div>' +
     '<div class="m-actions"><button class="m-cancel" data-close>完成</button></div>';
   openModal();
   $('#btnAddColl').onclick = async () => {
     const name = $('#newCollName').value.trim();
-    if (!name){ toast('请输入大分类名称', 'err'); return; }
+    if (!name){ toast('请输入题材名称', 'err'); return; }
     const id = uid();
     await dbPut(S_COLLS, { id, name, addedAt: Date.now() });
     state.colls.push({ id, name });
@@ -1327,7 +1322,7 @@ function openCollManage(){
     b.onclick = () => {
       const c = state.colls.find(x => x.id === b.dataset.rn);
       if (!c) return;
-      askName('重命名大分类', '输入新的分类名称。', c.name, async v => {
+      askName('重命名题材', '输入新的题材名称。', c.name, async v => {
         c.name = v;
         await dbPut(S_COLLS, c);
         renderAll();
@@ -1748,18 +1743,16 @@ function openOrganize(){
   let mode = 'color';
   const descs = {
     color:'按照片主色调自动分组，全程本地计算，无需联网。',
-    region:'读取照片内 GPS 信息（相机拍摄通常自带），联网反查城市地名；无位置信息的照片归入「未标注位置」。',
-    subject:'加载本地 AI 模型识别画面内容，首次使用需联网下载模型。'
+    region:'读取照片内 GPS 信息（相机拍摄通常自带），联网反查城市地名；无位置信息的照片归入「未标注位置」。'
   };
   const segSVG = {
     color:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="11" r="1.1"/><circle cx="11" cy="8" r="1.1"/><circle cx="15.5" cy="11.5" r="1.1"/><circle cx="10" cy="14.5" r="1.1"/><path d="M12 3a9 9 0 1 0 9 9c0-1.5-.8-2.5-2-2.5h-2.2c-.9 0-1.5-.6-1.5-1.4 0-.4.2-.8.5-1.1.4-.4.6-.8.6-1.3 0-1-.8-1.7-1.9-1.7h-1.4C11 4.3 9 3.4 7.6 4.1"/></svg>',
-    region:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-5.5 7-11a7 7 0 1 0-14 0c0 5.5 7 11 7 11z"/><circle cx="12" cy="10" r="2.6"/></svg>',
-    subject:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15.5l-1.9-4.6L5.5 9l4.6-1.4L12 3z"/></svg>'
+    region:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-5.5 7-11a7 7 0 1 0-14 0c0 5.5 7 11 7 11z"/><circle cx="12" cy="10" r="2.6"/></svg>'
   };
   function renderStep1(){
     box.innerHTML = '<h3>智能整理</h3><p class="m-desc">选择一种整理方式，我会分析全部照片，并自动生成同名文件夹把照片归位。你也可以随时在智能相簿里先看看分组效果。</p>' +
-      '<div class="seg">' + ['color','region','subject'].map(k =>
-        '<button data-mode="' + k + '" class="' + (k===mode?'on':'') + '">' + segSVG[k] + '<span>' + (k==='color'?'按颜色':k==='region'?'按地域':'按题材') + '</span></button>').join('') + '</div>' +
+      '<div class="seg">' + ['color','region'].map(k =>
+        '<button data-mode="' + k + '" class="' + (k===mode?'on':'') + '">' + segSVG[k] + '<span>' + (k==='color'?'按颜色':'按地域') + '</span></button>').join('') + '</div>' +
       '<div class="seg-desc" id="segDesc">' + descs[mode] + '</div>' +
       '<div class="m-actions"><button class="m-cancel" data-close>取消</button><button class="m-ok" id="startOrg">开始整理</button></div>';
     box.querySelectorAll('.seg button').forEach(b => {
@@ -1931,7 +1924,7 @@ function confirmDelete(ids, then){
 }
 
 function bindEvents(){
-  // 大分类列表
+  // 题材列表
   $('#collList').addEventListener('click', e => {
     const item = e.target.closest('.coll-item');
     if (!item) return;
@@ -1941,7 +1934,7 @@ function bindEvents(){
     renderAll();
     closeSidebar();
   });
-  // 顶栏大分类 / 返回按钮
+  // 顶栏题材 / 返回按钮
   $('#btnColls').addEventListener('click', () => {
     if (state.view.type === 'collections'){
       state.view = { type:'all', folderId:null, smart:null, group:null, q:'' };
@@ -1951,7 +1944,7 @@ function bindEvents(){
     $('#searchInput').value = '';
     renderAll();
   });
-  // 大分类管理
+  // 题材管理
   $('#btnCollManage').addEventListener('click', openCollManage);
   // 侧边栏导航（智能相簿）
   $$('.side-item[data-view]').forEach(el => {
