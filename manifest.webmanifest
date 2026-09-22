@@ -1,0 +1,16 @@
+{
+  "name": "照片整理 · 本地相册",
+  "short_name": "照片整理",
+  "description": "本地照片整理与管理：按颜色、地域、题材自动分类，照片全部保存在本地。",
+  "start_url": "https://jxdfp0101.github.io/photo-organizer/",
+  "scope": "https://jxdfp0101.github.io/photo-organizer/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f5f5f7",
+  "theme_color": "#f5f5f7",
+  "icons": [
+    { "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
