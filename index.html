@@ -507,11 +507,11 @@ input{font-family:inherit;font-size:inherit}
         </div>
         <div class="sync-card" style="margin-top:0">
           <div class="sync-title">云同步（多设备）</div>
-          <div class="sync-note" id="cloudStatus">未配置。多台设备填入同一组 LeanCloud 密钥即可自动互相同步。</div>
+          <div class="sync-note" id="cloudStatus">未配置。支持群晖 NAS（WebDAV Server）、坚果云、Nextcloud 等任何 WebDAV 服务，多设备填同一组账号即可互相同步。</div>
           <div id="cloudForm" style="display:none;margin-top:8px">
-            <input class="sync-in" id="lcAppId" placeholder="App ID" autocomplete="off">
-            <input class="sync-in" id="lcAppKey" placeholder="App Key" type="password" autocomplete="off">
-            <input class="sync-in" id="lcServer" placeholder="服务地址，如 https://xxx.leancloud.cn" autocomplete="off">
+            <input class="sync-in" id="davServer" placeholder="服务器地址，如 https://nas.example.com:5006/" autocomplete="off">
+            <input class="sync-in" id="davUser" placeholder="用户名" autocomplete="off">
+            <input class="sync-in" id="davPass" placeholder="密码（群晖账号）" type="password" autocomplete="off">
             <div class="sync-btns" style="margin-top:2px">
               <button class="sync-mini" id="btnCloudSave">保存并连接</button>
               <button class="sync-mini" id="btnCloudClear">清除</button>
@@ -1837,16 +1837,15 @@ function bindEvents(){
     const show = f.style.display === 'none';
     f.style.display = show ? 'block' : 'none';
     if (show && state.cloudCfg){
-      $('#lcAppId').value = state.cloudCfg.appId;
-      $('#lcAppKey').value = state.cloudCfg.appKey;
-      $('#lcServer').value = state.cloudCfg.server;
+      $('#davServer').value = state.cloudCfg.server;
+      $('#davUser').value = state.cloudCfg.user;
+      $('#davPass').value = state.cloudCfg.pass;
     }
   });
-  $('#btnCloudSave').addEventListener('click', () => cloudSaveCfg($('#lcAppId').value, $('#lcAppKey').value, $('#lcServer').value));
+  $('#btnCloudSave').addEventListener('click', () => cloudSaveCfg($('#davServer').value, $('#davUser').value, $('#davPass').value));
   $('#btnCloudClear').addEventListener('click', async () => {
     await saveCloudCfg(null);
     state.cloudCfg = null;
-    _avReady = false;
     $('#cloudForm').style.display = 'none';
     await cloudRender();
     toast('已清除云同步配置');
@@ -2122,7 +2121,8 @@ async function importBackup(file){
 /* =====================================================================
    云同步：LeanCloud 多设备同步
 ===================================================================== */
-let _avReady = false, _cloudSyncBusy = false, _cloudAutoTimer = null;
+const _CLOUD_DIR = 'photo-organizer';
+let _cloudSyncBusy = false, _cloudAutoTimer = null;
 
 async function getCloudCfg(){
   const r = await dbGet(S_SYNC, 'cloud');
@@ -2135,34 +2135,27 @@ async function getTombstones(){
 }
 async function saveTombstones(ids){ await dbPut(S_SYNC, { key: 'tombstones', ids }); }
 
-async function ensureAV(){
-  if (window.AV) return;
-  await loadScript('https://cdn.jsdelivr.net/npm/leancloud-storage@4.13.2/dist/leancloud.min.js');
-  if (!window.AV) throw new Error('云同步组件加载失败，请检查网络');
+function davUrl(path){
+  const base = (state.cloudCfg.server || '').replace(/\/+$/, '');
+  return base + '/' + String(path).replace(/^\/+/, '');
 }
 
-async function cloudInit(){
+async function dav(method, path, body){
   const cfg = state.cloudCfg;
-  if (!cfg) throw new Error('未配置');
-  if (!_avReady){
-    if (AV._appId && AV._appId !== cfg.appId) location.reload();
-    AV.init({ appId: cfg.appId, appKey: cfg.appKey, serverURLs: cfg.server });
-    _avReady = true;
-  }
+  const res = await fetch(davUrl(path), {
+    method: method,
+    body: body || undefined,
+    headers: { 'Authorization': 'Basic ' + btoa(cfg.user + ':' + cfg.pass) }
+  });
+  if (res.status === 401 || res.status === 403) throw new Error('认证失败，请检查用户名和密码');
+  return res;
 }
 
-async function avQueryAll(cls, limit){
-  const out = [];
-  let skip = 0;
-  for (;;){
-    const q = new AV.Query(cls);
-    q.limit(limit); q.skip(skip);
-    const arr = await q.find();
-    out.push.apply(out, arr);
-    if (arr.length < limit) break;
-    skip += arr.length;
-  }
-  return out;
+async function davGetJson(path){
+  const res = await dav('GET', path);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error('读取清单失败（' + res.status + '）');
+  try{ return await res.json(); }catch(e){ return null; }
 }
 
 function setCloudStatus(txt, kind){
@@ -2173,45 +2166,18 @@ function setCloudStatus(txt, kind){
 }
 
 async function cloudRender(){
-  const cfg = state.cloudCfg;
-  const st = $('#cloudStatus');
-  if (cfg){
+  if (state.cloudCfg){
     const tbs = await getTombstones();
     setCloudStatus('已连接 · 多设备自动同步' + (tbs.length ? ' · 待清理 ' + tbs.length : ''), 'ok');
   }else{
-    setCloudStatus('未配置。多台设备填入同一组 LeanCloud 密钥即可自动互相同步。', 'err');
+    setCloudStatus('未配置。支持群晖 NAS（WebDAV Server）、坚果云、Nextcloud 等任何 WebDAV 服务，多设备填同一组账号即可互相同步。', 'err');
   }
 }
 
-async function cloudUpload(m){
-  const rec = await dbGet(S_BLOBS, m.id + ':f');
-  if (!rec || !rec.blob) return;
-  const name = m.name || 'photo.jpg';
-  const file = new AV.File(name, rec.blob);
-  await file.save();
-  const obj = new AV.Object('PhotoSync');
-  obj.set('pid', m.id);
-  obj.set('hash', m.hash || null);
-  obj.set('name', name);
-  obj.set('size', rec.blob.size);
-  obj.set('pt', m.addedAt || Date.now());
-  obj.set('meta', JSON.stringify(m));
-  obj.set('file', file);
-  await obj.save();
-}
-
-async function cloudDownload(c, pid){
-  const file = c.get('file');
-  const blob = file ? await file.get() : null;
-  if (!blob) throw new Error('云端文件缺失');
-  let src = null;
-  try{ src = c.get('meta') ? JSON.parse(c.get('meta')) : null; }catch(e){}
+async function applyDownloaded(cloudId, c, blob){
+  const src = c.m || {};
   const nid = uid();
-  const nm = src ? Object.assign({}, src, { id: nid })
-    : { id: nid, name: c.get('name') || '照片.jpg', addedAt: c.get('pt') || Date.now(),
-        folderId: null, hash: c.get('hash') || null, colorHex: '#8e8e93', colorName: '黑白灰',
-        gps: null, region: null, subjectZh: null, subject: null, analyzed: { gps:false, region:false, subject:false },
-        width: 0, height: 0 };
+  const nm = Object.assign({}, src, { id: nid, hash: c.hash || null, addedAt: c.pt || Date.now() });
   const thumb = await makeThumbFromBlob(blob);
   await dbPut(S_META, nm);
   await dbPut(S_BLOBS, { id: nid + ':t', kind: 'thumb', photoId: nid, blob: thumb });
@@ -2226,44 +2192,68 @@ async function cloudSync(manual){
   _cloudSyncBusy = true;
   setCloudStatus('同步中…', 'busy');
   try{
-    await ensureAV();
-    await cloudInit();
-    const cloudObjs = await avQueryAll('PhotoSync', 500);
-    const cloudMap = new Map();
-    for (const o of cloudObjs){
-      const pid = o.get('pid');
-      if (pid) cloudMap.set(pid, { obj: o, hash: o.get('hash') || null, pt: o.get('pt') || 0 });
-    }
-    // 删除同步：本地删过的照片，云端一并删除
+    // 确保云端目录存在（群晖 WebDAV 需要父目录）
+    try{ await dav('MKCOL', _CLOUD_DIR); }catch(e){}
+    // 1. 读取云端清单
+    let manifest = await davGetJson(_CLOUD_DIR + '/manifest.json');
+    if (!manifest || !manifest.photos) manifest = { photos: {} };
+    const cloudMap = manifest.photos;
+    // 2. 删除同步：本地删过的照片，云端一并删除
     const tbs = await getTombstones();
     let removed = 0;
     for (const id of tbs){
-      const c = cloudMap.get(id);
-      if (c){
-        try{ await c.obj.destroy(); }catch(e){}
-        cloudMap.delete(id);
+      if (cloudMap[id]){
+        try{ await dav('DELETE', _CLOUD_DIR + '/photos/' + id + cloudMap[id].ext); }catch(e){}
+        delete cloudMap[id];
         removed++;
       }
     }
-    // 上传：本地有而云端没有或本地更新
+    // 3. 上传：本地有而云端没有，或本地更新
     let up = 0;
     for (const m of state.meta){
-      const c = cloudMap.get(m.id);
-      if (!c){ await cloudUpload(m); up++; }
-      else if (c.hash !== (m.hash || null)){
-        if ((m.addedAt || 0) >= (c.pt || 0)){ await cloudUpload(m); up++; }
-        else await cloudDownload(c.obj, m.id);
+      const c = cloudMap[m.id];
+      if (!c){
+        const rec = await dbGet(S_BLOBS, m.id + ':f');
+        if (!rec || !rec.blob) continue;
+        const ext = ((m.name && m.name.match(/\.\w+$/)) || ['.jpg'])[0];
+        const res = await dav('PUT', _CLOUD_DIR + '/photos/' + m.id + ext, rec.blob);
+        if (!res.ok) throw new Error('上传失败（' + res.status + '）');
+        cloudMap[m.id] = { m: Object.assign({}, m), hash: m.hash || null, ext: ext, size: rec.blob.size, pt: m.addedAt || Date.now() };
+        up++;
+      }else if (c.hash !== (m.hash || null)){
+        if ((m.addedAt || 0) >= (c.pt || 0)){
+          const rec = await dbGet(S_BLOBS, m.id + ':f');
+          if (rec && rec.blob){
+            const res = await dav('PUT', _CLOUD_DIR + '/photos/' + m.id + c.ext, rec.blob);
+            if (!res.ok) throw new Error('上传失败（' + res.status + '）');
+            cloudMap[m.id] = { m: Object.assign({}, m), hash: m.hash || null, ext: c.ext, size: rec.blob.size, pt: m.addedAt || Date.now() };
+            up++;
+          }
+        }else{
+          // 云端更新：下载覆盖本地
+          const res = await dav('GET', _CLOUD_DIR + '/photos/' + m.id + c.ext);
+          if (res.ok) await applyDownloaded(m.id, c, await res.blob());
+        }
       }
     }
-    // 下载：云端有而本地没有
+    // 4. 下载：云端有而本地没有
     let dn = 0;
-    for (const [id, c] of cloudMap){
-      if (!state.meta.some(m => m.id === id)){ await cloudDownload(c.obj, id); dn++; }
+    for (const [id, c] of Object.entries(cloudMap)){
+      if (!state.meta.some(m => m.id === id)){
+        const res = await dav('GET', _CLOUD_DIR + '/photos/' + id + c.ext);
+        if (!res.ok) continue;
+        await applyDownloaded(id, c, await res.blob());
+        dn++;
+      }
     }
+    // 5. 写回清单
+    const mres = await dav('PUT', _CLOUD_DIR + '/manifest.json',
+      new Blob([JSON.stringify({ photos: cloudMap, updatedAt: Date.now() })], { type: 'application/json' }));
+    if (!mres.ok) throw new Error('清单写入失败（' + mres.status + '）');
     if (tbs.length) await saveTombstones([]);
     renderAll();
     refreshSyncInfo();
-    setCloudStatus('已同步 · 上次：上传 ' + up + ' / 下载 ' + dn + (removed ? ' / 清理 ' + removed : ''), 'ok');
+    setCloudStatus('已同步 · 上传 ' + up + ' / 下载 ' + dn + (removed ? ' / 清理 ' + removed : ''), 'ok');
     if (manual) toast('云同步完成：上传 ' + up + '，下载 ' + dn);
   }catch(e){
     setCloudStatus('同步失败：' + ((e && e.message) || e), 'err');
@@ -2281,20 +2271,21 @@ async function cloudMarkDeleted(ids){
   if (!_cloudSyncBusy) cloudSync(false);
 }
 
-async function cloudSaveCfg(appId, appKey, server){
-  if (!appId || !appKey || !server){ toast('请完整填写 App ID、App Key 和服务地址', 'err'); return; }
-  await saveCloudCfg({ appId: appId.trim(), appKey: appKey.trim(), server: server.trim() });
+async function cloudSaveCfg(server, user, pass){
+  if (!server || !user || !pass){ toast('请完整填写服务器地址、用户名和密码', 'err'); return; }
+  await saveCloudCfg({ server: server.trim(), user: user.trim(), pass: pass });
   state.cloudCfg = await getCloudCfg();
   try{
-    await ensureAV();
-    await cloudInit();
-    setCloudStatus('已连接，正在首次同步…', 'busy');
+    try{ await dav('MKCOL', _CLOUD_DIR); }catch(e){}
+    const res = await dav('GET', _CLOUD_DIR + '/manifest.json');
+    if (res.status !== 200 && res.status !== 404) throw new Error('连接异常（' + res.status + '）');
     $('#cloudForm').style.display = 'none';
+    setCloudStatus('已连接，正在首次同步…', 'busy');
     toast('云同步配置已保存');
     await cloudSync(true);
   }catch(e){
     setCloudStatus('连接失败：' + ((e && e.message) || e), 'err');
-    toast('连接失败，请检查密钥和服务地址', 'err');
+    toast('连接失败：请检查地址、账号密码，以及群晖反向代理的 CORS 设置', 'err');
   }
 }
 
