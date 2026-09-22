@@ -127,6 +127,10 @@ input{font-family:inherit;font-size:inherit}
 .sync-btns{display:flex;gap:8px;margin-top:8px}
 .sync-btns button,.sync-import{flex:1;text-align:center;font-size:12px;padding:6px 0;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--accent);cursor:pointer;transition:.15s;font-family:inherit}
 .sync-btns button:hover,.sync-import:hover{background:var(--accent-soft)}
+.sync-in{width:100%;box-sizing:border-box;font-size:12px;padding:7px 9px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);margin-bottom:7px;font-family:inherit;outline:none}
+.sync-in:focus{border-color:var(--accent)}
+.sync-mini{flex:1;text-align:center;font-size:12px;padding:6px 0;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--accent);cursor:pointer;transition:.15s;font-family:inherit}
+.sync-mini:hover{background:var(--accent-soft)}
 
 /* 拖入文件夹高亮 */
 .folder-drag{background:var(--accent-soft)!important;color:var(--accent)!important}
@@ -501,6 +505,23 @@ input{font-family:inherit;font-size:inherit}
             <input type="file" id="importFile" accept=".zip,application/zip" hidden>
           </div>
         </div>
+        <div class="sync-card" style="margin-top:0">
+          <div class="sync-title">云同步（多设备）</div>
+          <div class="sync-note" id="cloudStatus">未配置。多台设备填入同一组 LeanCloud 密钥即可自动互相同步。</div>
+          <div id="cloudForm" style="display:none;margin-top:8px">
+            <input class="sync-in" id="lcAppId" placeholder="App ID" autocomplete="off">
+            <input class="sync-in" id="lcAppKey" placeholder="App Key" type="password" autocomplete="off">
+            <input class="sync-in" id="lcServer" placeholder="服务地址，如 https://xxx.leancloud.cn" autocomplete="off">
+            <div class="sync-btns" style="margin-top:2px">
+              <button class="sync-mini" id="btnCloudSave">保存并连接</button>
+              <button class="sync-mini" id="btnCloudClear">清除</button>
+            </div>
+          </div>
+          <div class="sync-btns">
+            <button id="btnCloudSync">立即同步</button>
+            <button id="btnCloudCfg">配置</button>
+          </div>
+        </div>
       </div>
     </div>
   </aside>
@@ -638,8 +659,8 @@ function fmtDate(ts){
 /* =====================================================================
    IndexedDB 封装
 ===================================================================== */
-const DB_NAME = 'photo_organizer', DB_VER = 1;
-const S_META = 'meta', S_BLOBS = 'blobs', S_FOLDERS = 'folders';
+const DB_NAME = 'photo_organizer', DB_VER = 2;
+const S_META = 'meta', S_BLOBS = 'blobs', S_FOLDERS = 'folders', S_SYNC = 'sync';
 
 function openDB(){
   return new Promise((resolve, reject) => {
@@ -652,6 +673,7 @@ function openDB(){
         const st = db.createObjectStore(S_BLOBS, {keyPath:'id'});
         st.createIndex('kind','kind',{unique:false});
       }
+      if (!db.objectStoreNames.contains(S_SYNC)) db.createObjectStore(S_SYNC, {keyPath:'key'});
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -1301,6 +1323,10 @@ async function handleFiles(fileList){
     ok ? '已上传 ' + ok + ' 张照片' + (dup ? '，跳过 ' + dup + ' 张重复' : '') + (fail ? '，' + fail + ' 张无法读取' : '') : '上传失败，请检查文件格式',
     fail && !ok ? 'err' : 'ok'
   );
+  if (ok && state.cloudCfg){
+    clearTimeout(_cloudAutoTimer);
+    _cloudAutoTimer = setTimeout(() => cloudSync(false), 8000);
+  }
 }
 
 /* =====================================================================
@@ -1344,6 +1370,7 @@ async function deletePhotos(ids){
   }
   renderAll();
   toast('已删除 ' + ids.length + ' 张照片');
+  cloudMarkDeleted(Array.from(ids));
 }
 
 async function downloadPhoto(id){
@@ -1803,6 +1830,27 @@ function bindEvents(){
     if (e.target.files && e.target.files[0]) importBackup(e.target.files[0]);
     e.target.value = '';
   });
+  // 云同步
+  $('#btnCloudSync').addEventListener('click', () => cloudSync(true));
+  $('#btnCloudCfg').addEventListener('click', () => {
+    const f = $('#cloudForm');
+    const show = f.style.display === 'none';
+    f.style.display = show ? 'block' : 'none';
+    if (show && state.cloudCfg){
+      $('#lcAppId').value = state.cloudCfg.appId;
+      $('#lcAppKey').value = state.cloudCfg.appKey;
+      $('#lcServer').value = state.cloudCfg.server;
+    }
+  });
+  $('#btnCloudSave').addEventListener('click', () => cloudSaveCfg($('#lcAppId').value, $('#lcAppKey').value, $('#lcServer').value));
+  $('#btnCloudClear').addEventListener('click', async () => {
+    await saveCloudCfg(null);
+    state.cloudCfg = null;
+    _avReady = false;
+    $('#cloudForm').style.display = 'none';
+    await cloudRender();
+    toast('已清除云同步配置');
+  });
 
 
   // 上传
@@ -2072,6 +2120,185 @@ async function importBackup(file){
 }
 
 /* =====================================================================
+   云同步：LeanCloud 多设备同步
+===================================================================== */
+let _avReady = false, _cloudSyncBusy = false, _cloudAutoTimer = null;
+
+async function getCloudCfg(){
+  const r = await dbGet(S_SYNC, 'cloud');
+  return r && r.v ? r.v : null;
+}
+async function saveCloudCfg(v){ await dbPut(S_SYNC, { key: 'cloud', v }); }
+async function getTombstones(){
+  const r = await dbGet(S_SYNC, 'tombstones');
+  return (r && r.ids) ? r.ids : [];
+}
+async function saveTombstones(ids){ await dbPut(S_SYNC, { key: 'tombstones', ids }); }
+
+async function ensureAV(){
+  if (window.AV) return;
+  await loadScript('https://cdn.jsdelivr.net/npm/leancloud-storage@4.13.2/dist/leancloud.min.js');
+  if (!window.AV) throw new Error('云同步组件加载失败，请检查网络');
+}
+
+async function cloudInit(){
+  const cfg = state.cloudCfg;
+  if (!cfg) throw new Error('未配置');
+  if (!_avReady){
+    if (AV._appId && AV._appId !== cfg.appId) location.reload();
+    AV.init({ appId: cfg.appId, appKey: cfg.appKey, serverURLs: cfg.server });
+    _avReady = true;
+  }
+}
+
+async function avQueryAll(cls, limit){
+  const out = [];
+  let skip = 0;
+  for (;;){
+    const q = new AV.Query(cls);
+    q.limit(limit); q.skip(skip);
+    const arr = await q.find();
+    out.push.apply(out, arr);
+    if (arr.length < limit) break;
+    skip += arr.length;
+  }
+  return out;
+}
+
+function setCloudStatus(txt, kind){
+  const el = $('#cloudStatus');
+  if (!el) return;
+  el.textContent = txt;
+  el.style.color = kind === 'ok' ? '#1d7a3c' : kind === 'err' ? '#d70015' : kind === 'busy' ? 'var(--text-2)' : 'var(--text-3)';
+}
+
+async function cloudRender(){
+  const cfg = state.cloudCfg;
+  const st = $('#cloudStatus');
+  if (cfg){
+    const tbs = await getTombstones();
+    setCloudStatus('已连接 · 多设备自动同步' + (tbs.length ? ' · 待清理 ' + tbs.length : ''), 'ok');
+  }else{
+    setCloudStatus('未配置。多台设备填入同一组 LeanCloud 密钥即可自动互相同步。', 'err');
+  }
+}
+
+async function cloudUpload(m){
+  const rec = await dbGet(S_BLOBS, m.id + ':f');
+  if (!rec || !rec.blob) return;
+  const name = m.name || 'photo.jpg';
+  const file = new AV.File(name, rec.blob);
+  await file.save();
+  const obj = new AV.Object('PhotoSync');
+  obj.set('pid', m.id);
+  obj.set('hash', m.hash || null);
+  obj.set('name', name);
+  obj.set('size', rec.blob.size);
+  obj.set('pt', m.addedAt || Date.now());
+  obj.set('meta', JSON.stringify(m));
+  obj.set('file', file);
+  await obj.save();
+}
+
+async function cloudDownload(c, pid){
+  const file = c.get('file');
+  const blob = file ? await file.get() : null;
+  if (!blob) throw new Error('云端文件缺失');
+  let src = null;
+  try{ src = c.get('meta') ? JSON.parse(c.get('meta')) : null; }catch(e){}
+  const nid = uid();
+  const nm = src ? Object.assign({}, src, { id: nid })
+    : { id: nid, name: c.get('name') || '照片.jpg', addedAt: c.get('pt') || Date.now(),
+        folderId: null, hash: c.get('hash') || null, colorHex: '#8e8e93', colorName: '黑白灰',
+        gps: null, region: null, subjectZh: null, subject: null, analyzed: { gps:false, region:false, subject:false },
+        width: 0, height: 0 };
+  const thumb = await makeThumbFromBlob(blob);
+  await dbPut(S_META, nm);
+  await dbPut(S_BLOBS, { id: nid + ':t', kind: 'thumb', photoId: nid, blob: thumb });
+  await dbPut(S_BLOBS, { id: nid + ':f', kind: 'full', photoId: nid, blob: blob });
+  state.meta.push(nm);
+  state.thumbs.set(nid, URL.createObjectURL(thumb));
+}
+
+async function cloudSync(manual){
+  if (_cloudSyncBusy) return;
+  if (!state.cloudCfg){ if (manual) toast('未配置云同步', 'err'); return; }
+  _cloudSyncBusy = true;
+  setCloudStatus('同步中…', 'busy');
+  try{
+    await ensureAV();
+    await cloudInit();
+    const cloudObjs = await avQueryAll('PhotoSync', 500);
+    const cloudMap = new Map();
+    for (const o of cloudObjs){
+      const pid = o.get('pid');
+      if (pid) cloudMap.set(pid, { obj: o, hash: o.get('hash') || null, pt: o.get('pt') || 0 });
+    }
+    // 删除同步：本地删过的照片，云端一并删除
+    const tbs = await getTombstones();
+    let removed = 0;
+    for (const id of tbs){
+      const c = cloudMap.get(id);
+      if (c){
+        try{ await c.obj.destroy(); }catch(e){}
+        cloudMap.delete(id);
+        removed++;
+      }
+    }
+    // 上传：本地有而云端没有或本地更新
+    let up = 0;
+    for (const m of state.meta){
+      const c = cloudMap.get(m.id);
+      if (!c){ await cloudUpload(m); up++; }
+      else if (c.hash !== (m.hash || null)){
+        if ((m.addedAt || 0) >= (c.pt || 0)){ await cloudUpload(m); up++; }
+        else await cloudDownload(c.obj, m.id);
+      }
+    }
+    // 下载：云端有而本地没有
+    let dn = 0;
+    for (const [id, c] of cloudMap){
+      if (!state.meta.some(m => m.id === id)){ await cloudDownload(c.obj, id); dn++; }
+    }
+    if (tbs.length) await saveTombstones([]);
+    renderAll();
+    refreshSyncInfo();
+    setCloudStatus('已同步 · 上次：上传 ' + up + ' / 下载 ' + dn + (removed ? ' / 清理 ' + removed : ''), 'ok');
+    if (manual) toast('云同步完成：上传 ' + up + '，下载 ' + dn);
+  }catch(e){
+    setCloudStatus('同步失败：' + ((e && e.message) || e), 'err');
+    if (manual) toast('云同步失败，请检查网络和配置', 'err');
+  }finally{
+    _cloudSyncBusy = false;
+  }
+}
+
+async function cloudMarkDeleted(ids){
+  if (!state.cloudCfg || !ids.length) return;
+  const tbs = await getTombstones();
+  for (const id of ids){ if (!tbs.includes(id)) tbs.push(id); }
+  await saveTombstones(tbs);
+  if (!_cloudSyncBusy) cloudSync(false);
+}
+
+async function cloudSaveCfg(appId, appKey, server){
+  if (!appId || !appKey || !server){ toast('请完整填写 App ID、App Key 和服务地址', 'err'); return; }
+  await saveCloudCfg({ appId: appId.trim(), appKey: appKey.trim(), server: server.trim() });
+  state.cloudCfg = await getCloudCfg();
+  try{
+    await ensureAV();
+    await cloudInit();
+    setCloudStatus('已连接，正在首次同步…', 'busy');
+    $('#cloudForm').style.display = 'none';
+    toast('云同步配置已保存');
+    await cloudSync(true);
+  }catch(e){
+    setCloudStatus('连接失败：' + ((e && e.message) || e), 'err');
+    toast('连接失败，请检查密钥和服务地址', 'err');
+  }
+}
+
+/* =====================================================================
    PWA：桌面应用支持（仅线上 https 生效；本地双击打开不会注册）
 ===================================================================== */
 if ('serviceWorker' in navigator && location.protocol === 'https:'){
@@ -2100,6 +2327,9 @@ if ('serviceWorker' in navigator && location.protocol === 'https:'){
   bindEvents();
   renderAll();
   refreshSyncInfo();
+  state.cloudCfg = await getCloudCfg();
+  await cloudRender();
+  if (state.cloudCfg) setTimeout(() => cloudSync(false), 1500);
 })();
 </script>
 </body>
