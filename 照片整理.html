@@ -1110,8 +1110,7 @@ function viewTitleText(){
   }
   if (t.type === 'smart'){
     if (t.smart === 'color') return '按颜色';
-    if (t.smart === 'region') return '按地域';
-    return '按题材';
+    return '按地域';
   }
   if (t.type === 'time'){
     if (t.year != null) return t.year + ' 年' + (t.month != null ? ' ' + t.month + ' 月' : '');
@@ -1179,8 +1178,7 @@ function renderTopbar(){
         '<span class="gb-name">' + esc(state.view.group) + '</span>'
       : '<span class="gb-name" style="font-size:13px;color:var(--text-3);font-weight:400">' +
         (state.view.smart==='color' ? '按主色调自动分组，点击「只看此组」可聚焦单个颜色' :
-         state.view.smart==='region' ? '读取 GPS 信息反查地名，点击「只看此组」可聚焦单个地点' :
-         'AI 识别画面内容，点击「只看此组」可聚焦单个题材') + '</span>';
+         '读取 GPS 信息反查地名，点击「只看此组」可聚焦单个地点') + '</span>';
     const ra = '<button class="gb-back" id="btnReanalyze" style="margin-left:auto">' +
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3"/><path d="M18 3v4h-4M6 21v-4h4"/></svg>重新分析</button>';
     gb.innerHTML = back + ra;
