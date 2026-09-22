@@ -2928,7 +2928,15 @@ async function loadNetCfgs(){
     let s = null;
     try{ s = await fetchLocalServerSettings(); }catch(e){}
     if (!s || (!s.netCfgs && !s.colls)){
-      try{ s = await fetchSettingsFromServer(list); }catch(e){}
+      if (list && list.length){
+        try{ s = await fetchSettingsFromServer(list); }catch(e){}
+      }else{
+        // 新设备 / 线上入口：从统一入口暂存站自动发现配置（手机装证书后在同一局域网即可读回）
+        try{
+          const res = await fetch('https://mintmilk.local:8091/相册设置.json', { cache: 'no-store' });
+          if (res.status === 200) s = await res.json();
+        }catch(e){}
+      }
     }
     if (s && (s.netCfgs || s.colls)){
       let changed = false;
