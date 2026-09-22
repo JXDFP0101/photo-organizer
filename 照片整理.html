@@ -184,10 +184,19 @@ input{font-family:inherit;font-size:inherit}
   background:var(--surface);border:1px solid var(--border);border-radius:18px;
   box-shadow:var(--shadow-sm);padding:16px 16px 8px;
 }
-/* 分组横向排列：多列并排，减少纵向堆叠 */
-#grid.smart-layout{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:22px;align-items:start}
-#grid.smart-layout .smart-block{margin-bottom:0}
-#grid.smart-layout .grid-sec{grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px}
+/* 分组：每个色系一行，行内照片横向滑动 */
+#grid.smart-layout{display:block}
+#grid.smart-layout .smart-block{margin-bottom:24px}
+#grid.smart-layout .smart-block:last-child{margin-bottom:0}
+#grid.smart-layout .grid-sec{
+  display:flex;flex-wrap:nowrap;gap:10px;overflow-x:auto;margin-bottom:0;
+  padding:2px 2px 8px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;
+}
+#grid.smart-layout .grid-sec::-webkit-scrollbar{height:6px}
+#grid.smart-layout .grid-sec::-webkit-scrollbar-thumb{background:rgba(0,0,0,.14);border-radius:3px}
+#grid.smart-layout .grid-sec::-webkit-scrollbar-track{background:transparent}
+#grid.smart-layout .grid-sec .photo-card{flex:0 0 auto;width:150px;scroll-snap-align:start}
+#grid.smart-layout .grid-sec .photo-card:hover{transform:none}
 .smart-h:first-child{margin-top:0}
 .smart-h .sh-dot{width:10px;height:10px;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(0,0,0,.1)}
 .smart-h .sh-name{font-size:15px;font-weight:600}
@@ -403,7 +412,7 @@ input{font-family:inherit;font-size:inherit}
   #main{width:100%}
   #content{padding:16px 14px 80px}
   #grid,.grid-sec{grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:9px}
-  #grid.smart-layout{grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
+  #grid.smart-layout .grid-sec .photo-card{width:118px}
   .search-wrap{display:none}
   .tb-btn span.lbl{display:none}
   .tb-btn{padding:0 12px}
