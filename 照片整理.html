@@ -86,7 +86,7 @@ input{font-family:inherit;font-size:inherit}
 .side-sec-h button:hover{background:var(--accent-soft);color:var(--accent)}
 .side-sec-h button svg{width:15px;height:15px}
 /* 题材总览卡片 */
-.coll-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;width:100%;padding:4px}
+.coll-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;width:100%;padding:4px;grid-column:1/-1}
 .coll-card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:30px 16px 26px;text-align:center;cursor:pointer;box-shadow:var(--shadow-sm);transition:transform .18s cubic-bezier(.3,0,.2,1),box-shadow .18s}
 .coll-card:hover{box-shadow:var(--shadow);transform:translateY(-2px)}
 .coll-ico{width:56px;height:56px;border-radius:16px;background:var(--accent-soft);color:var(--accent);display:flex;align-items:center;justify-content:center;margin:0 auto 14px}
@@ -1030,7 +1030,7 @@ function smartKey(m){
 function collOf(m){ return m.collection || 'default'; }
 function collName(id){
   const c = state.colls.find(x => x.id === id);
-  return c ? c.name : '手绘油画';
+  return c ? c.name : (state.colls[0] ? state.colls[0].name : '默认');
 }
 function collMeta(){ return state.meta.filter(m => collOf(m) === state.collection); }
 function collCount(id){ return state.meta.filter(m => collOf(m) === id).length; }
@@ -1300,11 +1300,11 @@ function openCollManage(){
     return '<div class="m-row">' +
       '<span class="m-name">' + esc(c.name) + '（' + n + ' 张）</span>' +
       '<button class="m-rn" data-rn="' + c.id + '">重命名</button>' +
-      (c.builtin ? '' : '<button class="m-del" data-del="' + c.id + '">删除</button>') +
+      '<button class="m-del" data-del="' + c.id + '">删除</button>' +
       '</div>';
   }).join('');
   box.innerHTML = '<h3>题材管理</h3>' +
-    '<p class="m-desc">侧边栏顶部就是题材入口；删除题材后，其中的照片会归入「' + esc(collName('default')) + '」。</p>' +
+    '<p class="m-desc">侧边栏顶部就是题材入口；删除题材后，其中的照片会归入其余题材（至少保留一个题材）。</p>' +
     '<div class="m-list">' + (lis || '<div class="m-empty">暂无题材</div>') + '</div>' +
     '<div class="m-add"><input id="newCollName" placeholder="新题材名称，如：摄影" maxlength="20"><button id="btnAddColl">添加</button></div>' +
     '<div class="m-actions"><button class="m-cancel" data-close>完成</button></div>';
@@ -1333,17 +1333,23 @@ function openCollManage(){
   box.querySelectorAll('[data-del]').forEach(b => {
     b.onclick = async () => {
       const c = state.colls.find(x => x.id === b.dataset.del);
-      if (!c || c.builtin) return;
+      if (!c) return;
+      if (state.colls.length <= 1){
+        toast('至少保留一个题材', 'err');
+        openCollManage();
+        return;
+      }
+      const fallback = state.colls.find(x => x.id !== c.id) || state.colls[0];
       await dbDel(S_COLLS, c.id);
       state.colls = state.colls.filter(x => x.id !== c.id);
       for (const m of state.meta.filter(m => collOf(m) === c.id)){
-        m.collection = 'default';
+        m.collection = fallback.id;
         await dbPut(S_META, m);
       }
-      if (state.collection === c.id) state.collection = 'default';
+      if (state.collection === c.id) state.collection = fallback.id;
       renderAll();
       openCollManage();
-      toast('已删除「' + c.name + '」，照片已归入「' + collName('default') + '」');
+      toast('已删除「' + c.name + '」，照片已归入「' + fallback.name + '」');
     };
   });
 }
@@ -2183,7 +2189,7 @@ async function refreshSyncInfo(){
   if (el && navigator.storage && navigator.storage.estimate){
     try{
       const est = await navigator.storage.estimate();
-      el.textContent = fmtBytes(est.usage || 0) + ' / ' + fmtBytes(est.quota || 0);
+      el.textContent = fmtBytes(est.usage || 0);
     }catch(e){}
   }
   const ep = $('#syncPersist');
@@ -2264,10 +2270,13 @@ async function importBackup(file){
   catch(e){ toast('备份文件已损坏', 'err'); return; }
   const existing = new Set(state.meta.map(m => m.hash).filter(Boolean));
   for (const m of metaList){
-    const col = m.collection || 'default';
+    let col = m.collection || 'default';
     if (col !== 'default' && !state.colls.some(c => c.id === col)){
       await dbPut(S_COLLS, { id: col, name: col, addedAt: Date.now() });
       state.colls.push({ id: col, name: col });
+    }else if (col === 'default' && !state.colls.some(c => c.id === 'default')){
+      col = state.collection;
+      m.collection = col;
     }
   }
   let ok = 0, dup = 0, miss = 0;
@@ -2356,10 +2365,13 @@ async function applyDownloaded(cloudId, c, blob){
   const nid = uid();
   const nm = Object.assign({}, src, { id: nid, hash: c.hash || null, addedAt: c.pt || Date.now() });
   const thumb = await makeThumbFromBlob(blob);
-  const col = nm.collection || 'default';
+  let col = nm.collection || 'default';
   if (col !== 'default' && !state.colls.some(c => c.id === col)){
     await dbPut(S_COLLS, { id: col, name: col, addedAt: Date.now() });
     state.colls.push({ id: col, name: col });
+  }else if (col === 'default' && !state.colls.some(c => c.id === 'default')){
+    col = state.collection;
+    nm.collection = col;
   }
   await dbPut(S_META, nm);
   await dbPut(S_BLOBS, { id: nid + ':t', kind: 'thumb', photoId: nid, blob: thumb });
