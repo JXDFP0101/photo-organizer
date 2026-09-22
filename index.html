@@ -1,0 +1,1766 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>相册整理 · Photo Organizer</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='6' y='10' width='52' height='44' rx='12' fill='%230071e3'/%3E%3Ccircle cx='24' cy='26' r='7' fill='white'/%3E%3Cpath d='M10 46l14-14 10 10 8-8 12 12v-2a10 10 0 0 1-10 10H20a10 10 0 0 1-10-10z' fill='white' opacity='.85'/%3E%3C/svg%3E">
+<style>
+/* ===================== 设计变量 ===================== */
+:root{
+  --bg:#f5f5f7;
+  --surface:#ffffff;
+  --surface-2:#fbfbfd;
+  --text:#1d1d1f;
+  --text-2:#6e6e73;
+  --text-3:#86868b;
+  --accent:#0071e3;
+  --accent-hover:#0077ed;
+  --accent-soft:rgba(0,113,227,.1);
+  --danger:#ff3b30;
+  --danger-soft:rgba(255,59,48,.1);
+  --border:rgba(0,0,0,.08);
+  --border-strong:rgba(0,0,0,.14);
+  --radius:14px;
+  --radius-sm:10px;
+  --radius-lg:20px;
+  --sidebar-w:272px;
+  --shadow:0 8px 28px rgba(0,0,0,.10);
+  --shadow-sm:0 2px 10px rgba(0,0,0,.06);
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Helvetica Neue",sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{
+  font-family:var(--font);
+  background:var(--bg);
+  color:var(--text);
+  -webkit-font-smoothing:antialiased;
+  overflow:hidden;
+  font-size:14px;
+  line-height:1.45;
+}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit;font-size:inherit}
+input{font-family:inherit;font-size:inherit}
+::selection{background:var(--accent-soft)}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-thumb{background:rgba(0,0,0,.18);border-radius:8px;border:2px solid transparent;background-clip:content-box}
+::-webkit-scrollbar-thumb:hover{background:rgba(0,0,0,.32);border:2px solid transparent;background-clip:content-box}
+::-webkit-scrollbar-track{background:transparent}
+
+/* ===================== 布局 ===================== */
+#app{display:flex;height:100vh;width:100vw}
+
+/* ===================== 侧边栏 ===================== */
+#sidebar{
+  width:var(--sidebar-w);flex-shrink:0;height:100%;
+  display:flex;flex-direction:column;
+  background:rgba(250,250,252,.78);
+  -webkit-backdrop-filter:saturate(180%) blur(24px);
+  backdrop-filter:saturate(180%) blur(24px);
+  border-right:1px solid var(--border);
+  padding:18px 12px 12px;
+  transition:transform .28s cubic-bezier(.4,0,.2,1);
+  z-index:30;
+}
+.side-brand{display:flex;align-items:center;gap:10px;padding:4px 10px 14px}
+.side-brand .logo{
+  width:34px;height:34px;border-radius:9px;flex-shrink:0;
+  background:linear-gradient(135deg,#0a84ff,#0071e3 55%,#5e5ce6);
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 3px 10px rgba(0,113,227,.35);
+}
+.side-brand .logo svg{width:18px;height:18px}
+.side-brand b{font-size:15px;font-weight:600;letter-spacing:.2px}
+.side-brand small{display:block;font-size:11px;color:var(--text-3);font-weight:400;margin-top:1px}
+
+.side-sec{margin-top:6px}
+.side-sec-h{display:flex;align-items:center;justify-content:space-between;padding:10px 10px 6px}
+.side-sec-h span{font-size:12px;font-weight:600;color:var(--text-3);letter-spacing:.4px}
+.side-sec-h button{color:var(--text-3);border-radius:8px;width:24px;height:24px;display:flex;align-items:center;justify-content:center;transition:.15s}
+.side-sec-h button:hover{background:rgba(0,0,0,.06);color:var(--text)}
+.side-sec-h button svg{width:15px;height:15px}
+
+.side-item{
+  display:flex;align-items:center;gap:11px;
+  padding:8px 10px;border-radius:var(--radius-sm);
+  cursor:pointer;color:var(--text);position:relative;
+  transition:background .15s,color .15s;
+  user-select:none;
+}
+.side-item:hover{background:rgba(0,0,0,.05)}
+.side-item.active{background:var(--accent-soft);color:var(--accent);font-weight:500}
+.side-item .ic{width:20px;height:20px;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+.side-item .ic svg{width:18px;height:18px}
+.side-item .cnt{margin-left:auto;font-size:12px;color:var(--text-3)}
+.side-item.active .cnt{color:var(--accent)}
+.side-item .dot{width:8px;height:8px;border-radius:50%;margin-left:auto;box-shadow:inset 0 0 0 1px rgba(0,0,0,.08)}
+.side-item .acts{display:none;margin-left:6px;gap:2px}
+.side-item:hover .acts{display:flex}
+.side-item .acts button{
+  width:22px;height:22px;border-radius:7px;display:flex;align-items:center;justify-content:center;
+  color:var(--text-3);transition:.15s;
+}
+.side-item .acts button:hover{background:rgba(0,0,0,.08);color:var(--text)}
+.side-item .acts button.danger:hover{color:var(--danger);background:var(--danger-soft)}
+.side-item .acts svg{width:13px;height:13px}
+
+#folderList{overflow-y:auto;flex:1;margin:2px -2px 0;padding:0 2px}
+#folderList.empty-hint{color:var(--text-3);font-size:12px;padding:6px 10px;line-height:1.6}
+
+.side-foot{padding:10px 10px 2px;border-top:1px solid var(--border);margin-top:10px}
+.side-foot .st-tip{font-size:11px;color:var(--text-3);line-height:1.6}
+.side-foot .st-tip b{color:var(--text-2);font-weight:500}
+
+/* 拖入文件夹高亮 */
+.folder-drag{background:var(--accent-soft)!important;color:var(--accent)!important}
+.folder-drag .cnt{color:var(--accent)}
+
+/* ===================== 主区域 ===================== */
+#main{flex:1;min-width:0;height:100%;display:flex;flex-direction:column;position:relative}
+
+#topbar{
+  display:flex;align-items:center;gap:12px;
+  padding:14px 22px;
+  background:rgba(245,245,247,.82);
+  -webkit-backdrop-filter:saturate(180%) blur(20px);
+  backdrop-filter:saturate(180%) blur(20px);
+  border-bottom:1px solid var(--border);
+  z-index:20;
+}
+#hamburger{display:none;width:34px;height:34px;border-radius:9px;align-items:center;justify-content:center;color:var(--text-2)}
+#hamburger:hover{background:rgba(0,0,0,.05)}
+#hamburger svg{width:19px;height:19px}
+
+#viewTitle{font-size:18px;font-weight:700;letter-spacing:.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#viewSub{font-size:12px;color:var(--text-3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.top-spacer{flex:1}
+
+.search-wrap{position:relative;display:flex;align-items:center}
+.search-wrap svg{position:absolute;left:11px;width:15px;height:15px;color:var(--text-3);pointer-events:none}
+#searchInput{
+  width:190px;height:34px;border-radius:10px;border:1px solid transparent;
+  background:rgba(0,0,0,.06);outline:none;padding:0 12px 0 34px;font-size:13px;
+  color:var(--text);transition:.2s;
+}
+#searchInput:focus{background:var(--surface);border-color:var(--border-strong);box-shadow:0 0 0 3px rgba(0,113,227,.12);width:230px}
+#searchInput::placeholder{color:var(--text-3)}
+#searchClear{position:absolute;right:6px;width:22px;height:22px;border-radius:50%;display:none;align-items:center;justify-content:center;color:var(--text-3)}
+#searchClear:hover{background:rgba(0,0,0,.08)}
+#searchClear svg{width:12px;height:12px}
+
+.tb-btn{
+  display:flex;align-items:center;gap:7px;height:34px;padding:0 14px;border-radius:10px;
+  font-size:13px;font-weight:500;transition:.18s;white-space:nowrap;
+}
+.tb-btn svg{width:15px;height:15px}
+.btn-primary{background:var(--accent);color:#fff;box-shadow:0 2px 8px rgba(0,113,227,.3)}
+.btn-primary:hover{background:var(--accent-hover)}
+.btn-ghost{background:rgba(0,0,0,.055);color:var(--text)}
+.btn-ghost:hover{background:rgba(0,0,0,.09)}
+.btn-ghost.on{background:var(--accent-soft);color:var(--accent)}
+.tb-btn:active{transform:scale(.97)}
+
+/* ===================== 内容 ===================== */
+#content{flex:1;overflow-y:auto;padding:22px 26px 60px;scroll-behavior:smooth}
+
+#groupBar{display:flex;align-items:center;gap:8px;margin-bottom:14px}
+#groupBar .gb-back{
+  display:inline-flex;align-items:center;gap:5px;font-size:13px;color:var(--accent);
+  padding:6px 12px;border-radius:9px;background:var(--accent-soft);font-weight:500;transition:.15s;
+}
+#groupBar .gb-back:hover{background:rgba(0,113,227,.16)}
+#groupBar .gb-back svg{width:14px;height:14px}
+#groupBar .gb-name{font-size:15px;font-weight:600;margin-left:4px}
+
+.smart-h{display:flex;align-items:center;gap:9px;margin:26px 0 12px;padding:0 2px}
+.smart-h:first-child{margin-top:0}
+.smart-h .sh-dot{width:10px;height:10px;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(0,0,0,.1)}
+.smart-h .sh-name{font-size:15px;font-weight:600}
+.smart-h .sh-cnt{font-size:12px;color:var(--text-3)}
+.smart-h .sh-open{margin-left:auto;font-size:12px;color:var(--accent);font-weight:500;padding:4px 10px;border-radius:8px;transition:.15s}
+.smart-h .sh-open:hover{background:var(--accent-soft)}
+
+/* 网格 */
+#grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:12px}
+.grid-sec{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:12px;margin-bottom:14px}
+#grid.compact{grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}
+.photo-card{
+  position:relative;border-radius:var(--radius);overflow:hidden;aspect-ratio:1;
+  background:var(--surface);box-shadow:var(--shadow-sm);cursor:pointer;
+  transition:transform .2s cubic-bezier(.3,0,.2,1),box-shadow .2s;
+  user-select:none;
+}
+.photo-card:hover{transform:scale(1.02);box-shadow:var(--shadow)}
+.photo-card img{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none}
+.photo-card .pc-check{
+  position:absolute;top:9px;left:9px;width:24px;height:24px;border-radius:50%;
+  background:rgba(20,20,24,.45);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+  border:1.5px solid rgba(255,255,255,.9);display:flex;align-items:center;justify-content:center;
+  opacity:0;transform:scale(.7);transition:.16s;cursor:pointer;z-index:2;
+}
+.photo-card:hover .pc-check{opacity:1;transform:scale(1)}
+.photo-card .pc-check svg{width:13px;height:13px;color:#fff;opacity:0}
+.photo-card.selected{box-shadow:0 0 0 3px var(--accent),0 8px 24px rgba(0,113,227,.28)}
+.photo-card.selected .pc-check{opacity:1;transform:scale(1);background:var(--accent);border-color:var(--accent)}
+.photo-card.selected .pc-check svg{opacity:1}
+.photo-card.dragging{opacity:.45;transform:scale(.96)}
+.photo-card .pc-badge{
+  position:absolute;bottom:8px;right:8px;font-size:10px;font-weight:500;color:#fff;
+  background:rgba(20,20,24,.5);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+  padding:2px 7px;border-radius:20px;opacity:0;transition:.16s;
+}
+.photo-card:hover .pc-badge{opacity:1}
+
+/* 空状态 */
+#emptyState{
+  display:none;text-align:center;padding:80px 20px;max-width:460px;margin:0 auto;
+}
+#emptyState.show{display:block}
+#emptyState .es-ic{
+  width:76px;height:76px;border-radius:22px;margin:0 auto 22px;
+  background:linear-gradient(135deg,#e8f1ff,#eef3ff);
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:inset 0 0 0 1px rgba(0,113,227,.12);
+}
+#emptyState .es-ic svg{width:34px;height:34px;color:var(--accent)}
+#emptyState h2{font-size:19px;font-weight:600;margin-bottom:8px}
+#emptyState p{font-size:13.5px;color:var(--text-2);line-height:1.7}
+#emptyState .es-btn{margin-top:22px;display:inline-flex;align-items:center;gap:8px;background:var(--accent);color:#fff;height:38px;padding:0 20px;border-radius:12px;font-weight:500;font-size:13.5px;box-shadow:0 3px 12px rgba(0,113,227,.3);transition:.18s}
+#emptyState .es-btn:hover{background:var(--accent-hover)}
+#emptyState .es-btn svg{width:16px;height:16px}
+
+/* ===================== 选择工具栏 ===================== */
+#selBar{
+  position:fixed;left:50%;bottom:26px;transform:translate(-50%,24px);
+  display:flex;align-items:center;gap:4px;padding:7px;border-radius:16px;
+  background:rgba(30,30,34,.82);-webkit-backdrop-filter:saturate(180%) blur(24px);backdrop-filter:saturate(180%) blur(24px);
+  box-shadow:0 12px 40px rgba(0,0,0,.28);opacity:0;pointer-events:none;transition:.22s cubic-bezier(.3,0,.2,1);z-index:40;
+}
+#selBar.show{opacity:1;pointer-events:auto;transform:translate(-50%,0)}
+#selBar .sel-count{color:#fff;font-size:13px;font-weight:500;padding:0 12px;white-space:nowrap}
+#selBar .sep{width:1px;height:22px;background:rgba(255,255,255,.18);margin:0 4px}
+#selBar button{
+  display:flex;align-items:center;gap:6px;color:#fff;font-size:13px;font-weight:500;
+  padding:8px 13px;border-radius:10px;transition:.15s;white-space:nowrap;
+}
+#selBar button:hover{background:rgba(255,255,255,.14)}
+#selBar button.danger:hover{background:rgba(255,59,48,.85)}
+#selBar button svg{width:15px;height:15px}
+
+/* ===================== 上传进度 ===================== */
+#uploadBar{
+  position:fixed;top:0;left:0;right:0;height:3px;z-index:60;display:none;
+  background:rgba(0,113,227,.12);overflow:hidden;
+}
+#uploadBar.show{display:block}
+#uploadBar .ub-fill{height:100%;background:var(--accent);width:0;transition:width .2s}
+
+/* ===================== 灯箱 ===================== */
+#lightbox{
+  position:fixed;inset:0;z-index:70;display:none;align-items:center;justify-content:center;
+  background:rgba(12,12,14,.92);-webkit-backdrop-filter:blur(30px);backdrop-filter:blur(30px);
+}
+#lightbox.show{display:flex}
+#lightbox .lb-stage{display:flex;flex-direction:column;align-items:center;max-width:88vw;max-height:92vh}
+#lightbox img{max-width:86vw;max-height:74vh;border-radius:14px;box-shadow:0 30px 90px rgba(0,0,0,.5);object-fit:contain;background:#111}
+#lbInfo{display:flex;align-items:center;gap:10px;margin-top:16px;color:#e8e8ed;font-size:13px;max-width:86vw}
+#lbInfo .lb-name{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:42vw}
+#lbInfo .lb-tags{display:flex;gap:6px;flex-wrap:wrap;justify-content:center}
+.lb-tag{font-size:11px;padding:3px 9px;border-radius:20px;background:rgba(255,255,255,.12);color:#cfd0d6;display:flex;align-items:center;gap:5px;white-space:nowrap}
+.lb-tag .t-dot{width:7px;height:7px;border-radius:50%}
+.lb-nav{
+  position:absolute;top:50%;transform:translateY(-50%);width:46px;height:46px;border-radius:50%;
+  background:rgba(255,255,255,.1);color:#fff;display:flex;align-items:center;justify-content:center;transition:.15s;
+}
+.lb-nav:hover{background:rgba(255,255,255,.2)}
+.lb-nav svg{width:20px;height:20px}
+#lbPrev{left:26px}#lbNext{right:26px}
+#lbClose{position:absolute;top:22px;right:24px;width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.1);color:#fff;display:flex;align-items:center;justify-content:center;transition:.15s}
+#lbClose:hover{background:rgba(255,255,255,.2)}
+#lbClose svg{width:18px;height:18px}
+#lbTools{position:absolute;bottom:24px;left:50%;transform:translateX(-50%);display:flex;gap:8px}
+#lbTools button{
+  display:flex;align-items:center;gap:7px;color:#fff;font-size:13px;font-weight:500;
+  background:rgba(255,255,255,.12);padding:9px 16px;border-radius:11px;transition:.15s;
+}
+#lbTools button:hover{background:rgba(255,255,255,.22)}
+#lbTools button svg{width:15px;height:15px}
+
+/* ===================== 弹窗 ===================== */
+#modalRoot{
+  position:fixed;inset:0;z-index:80;display:none;align-items:center;justify-content:center;
+  background:rgba(20,20,24,.35);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
+}
+#modalRoot.show{display:flex}
+.modal{
+  width:440px;max-width:92vw;max-height:86vh;overflow:auto;
+  background:var(--surface);border-radius:22px;box-shadow:0 30px 90px rgba(0,0,0,.25);
+  padding:26px 28px;animation:pop .25s cubic-bezier(.3,1.2,.4,1);
+}
+@keyframes pop{from{opacity:0;transform:scale(.94) translateY(8px)}to{opacity:1;transform:none}}
+.modal h3{font-size:18px;font-weight:600;margin-bottom:6px}
+.modal .m-desc{font-size:13px;color:var(--text-2);line-height:1.65;margin-bottom:18px}
+.modal input[type=text]{
+  width:100%;height:42px;border-radius:12px;border:1px solid var(--border-strong);
+  padding:0 14px;font-size:14px;outline:none;background:var(--surface-2);transition:.18s;margin-bottom:16px;
+}
+.modal input[type=text]:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(0,113,227,.13);background:#fff}
+.m-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:4px}
+.m-actions button{height:38px;padding:0 18px;border-radius:11px;font-size:13.5px;font-weight:500;transition:.15s}
+.m-actions .m-cancel{background:rgba(0,0,0,.06);color:var(--text)}
+.m-actions .m-cancel:hover{background:rgba(0,0,0,.1)}
+.m-actions .m-ok{background:var(--accent);color:#fff;box-shadow:0 2px 8px rgba(0,113,227,.28)}
+.m-actions .m-ok:hover{background:var(--accent-hover)}
+.m-actions .m-danger{background:var(--danger);color:#fff;box-shadow:0 2px 8px rgba(255,59,48,.28)}
+.m-actions .m-danger:hover{background:#e0362d}
+.m-actions button:disabled{opacity:.5;cursor:default}
+
+/* 分段选择 */
+.seg{display:flex;background:rgba(0,0,0,.055);border-radius:12px;padding:3px;margin-bottom:16px}
+.seg button{
+  flex:1;height:38px;border-radius:9px;font-size:13.5px;font-weight:500;color:var(--text-2);
+  display:flex;align-items:center;justify-content:center;gap:7px;transition:.18s;
+}
+.seg button svg{width:15px;height:15px}
+.seg button.on{background:var(--surface);color:var(--text);box-shadow:0 1px 5px rgba(0,0,0,.1),0 0 0 1px var(--border)}
+.seg-desc{font-size:12.5px;color:var(--text-3);margin:-8px 0 16px;line-height:1.6}
+
+/* 进度 */
+.prog{margin:6px 0 16px}
+.prog .p-row{display:flex;justify-content:space-between;font-size:12.5px;color:var(--text-2);margin-bottom:7px}
+.prog .p-bar{height:7px;border-radius:6px;background:rgba(0,0,0,.07);overflow:hidden}
+.prog .p-fill{height:100%;width:0;background:var(--accent);border-radius:6px;transition:width .15s}
+
+/* 整理预览 */
+.folder-preview{list-style:none;margin:4px 0 16px;max-height:250px;overflow-y:auto;border:1px solid var(--border);border-radius:14px;padding:6px}
+.folder-preview li{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:10px;cursor:pointer;transition:.12s}
+.folder-preview li:hover{background:rgba(0,0,0,.045)}
+.folder-preview li.off{opacity:.45}
+.folder-preview .fp-dot{width:14px;height:14px;border-radius:5px;flex-shrink:0;box-shadow:inset 0 0 0 1px rgba(0,0,0,.1)}
+.folder-preview .fp-name{font-size:13.5px;font-weight:500;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.folder-preview .fp-cnt{font-size:12px;color:var(--text-3)}
+.folder-preview .fp-check{color:var(--accent);display:flex}
+.folder-preview .fp-check svg{width:16px;height:16px}
+.folder-preview .fp-check.off{color:var(--text-3);opacity:.4}
+
+/* 移动选择列表 */
+.move-list{list-style:none;margin:4px 0 16px;max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:14px;padding:6px}
+.move-list li{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;cursor:pointer;font-size:13.5px;font-weight:500;transition:.12s}
+.move-list li:hover{background:var(--accent-soft);color:var(--accent)}
+.move-list li svg{width:16px;height:16px;color:var(--text-3)}
+.move-list li:hover svg{color:var(--accent)}
+
+/* ===================== Toast ===================== */
+#toast{
+  position:fixed;left:50%;bottom:30px;transform:translate(-50%,20px);z-index:90;
+  background:rgba(30,30,34,.9);color:#fff;font-size:13px;font-weight:500;
+  padding:11px 20px;border-radius:14px;box-shadow:0 10px 36px rgba(0,0,0,.3);
+  opacity:0;pointer-events:none;transition:.25s cubic-bezier(.3,0,.2,1);
+  display:flex;align-items:center;gap:9px;max-width:80vw;
+}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+#toast svg{width:16px;height:16px;flex-shrink:0}
+#toast.err svg{color:#ff6961}
+#toast.ok svg{color:#30d158}
+
+/* ===================== 拖拽上传遮罩 ===================== */
+#dropOverlay{
+  position:fixed;inset:0;z-index:95;display:none;align-items:center;justify-content:center;
+  background:rgba(245,245,247,.6);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);
+}
+#dropOverlay.show{display:flex}
+#dropOverlay .do-box{
+  width:min(480px,86vw);padding:52px 30px;text-align:center;border-radius:28px;
+  border:2px dashed rgba(0,113,227,.5);background:rgba(255,255,255,.85);
+  box-shadow:0 20px 70px rgba(0,0,0,.12);
+}
+#dropOverlay .do-box svg{width:44px;height:44px;color:var(--accent);margin-bottom:16px}
+#dropOverlay .do-box b{font-size:17px;font-weight:600;display:block;margin-bottom:6px}
+#dropOverlay .do-box p{font-size:13px;color:var(--text-2)}
+
+/* ===================== 响应式 ===================== */
+@media (max-width:900px){
+  #sidebar{position:fixed;left:0;top:0;bottom:0;transform:translateX(-100%);box-shadow:var(--shadow)}
+  #sidebar.open{transform:translateX(0)}
+  #hamburger{display:flex}
+  #main{width:100%}
+  #content{padding:16px 14px 80px}
+  #grid,.grid-sec{grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:9px}
+  .search-wrap{display:none}
+  .tb-btn span.lbl{display:none}
+  .tb-btn{padding:0 12px}
+}
+@media (max-width:520px){
+  #grid,.grid-sec{grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:7px}
+  #topbar{padding:12px 14px}
+  #viewTitle{font-size:16px}
+  .modal{padding:22px 20px}
+  #searchInput{font-size:16px}
+}
+@media (hover:none){
+  .photo-card .pc-check{opacity:1;transform:scale(1)}
+  .side-item .acts{display:flex}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{transition-duration:.01ms!important;animation-duration:.01ms!important}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- ===== 侧边栏 ===== -->
+  <aside id="sidebar">
+    <div class="side-brand">
+      <div class="logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="15" rx="3"/><circle cx="9" cy="10" r="2"/><path d="M3 17l5-5 4 4 3-3 6 6"/></svg>
+      </div>
+      <div>
+        <b>相册整理</b>
+        <small>Photo Organizer</small>
+      </div>
+    </div>
+
+    <div class="side-sec">
+      <div class="side-sec-h"><span>智能相簿</span></div>
+      <div class="side-item active" data-view="all" id="navAll">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="3" width="8" height="8" rx="2"/><rect x="3" y="13" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/></svg></span>
+        <span>全部照片</span>
+        <span class="cnt" id="navAllCnt">0</span>
+      </div>
+      <div class="side-item" data-view="smart" data-smart="color" id="navColor">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 1 0 9 9c0-1.5-.8-2.5-2-2.5h-2.2c-.9 0-1.5-.6-1.5-1.4 0-.4.2-.8.5-1.1.4-.4.6-.8.6-1.3 0-1-.8-1.7-1.9-1.7h-1.4C11 4.3 9 3.4 7.6 4.1"/><circle cx="7.5" cy="11" r="1.1"/><circle cx="11" cy="8" r="1.1"/><circle cx="15.5" cy="11.5" r="1.1"/><circle cx="10" cy="14.5" r="1.1"/></svg></span>
+        <span>按颜色</span>
+        <span class="cnt" id="navColorCnt"></span>
+      </div>
+      <div class="side-item" data-view="smart" data-smart="region" id="navRegion">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-5.5 7-11a7 7 0 1 0-14 0c0 5.5 7 11 7 11z"/><circle cx="12" cy="10" r="2.6"/></svg></span>
+        <span>按地域</span>
+        <span class="cnt" id="navRegionCnt"></span>
+      </div>
+      <div class="side-item" data-view="smart" data-smart="subject" id="navSubject">
+        <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15.5l-1.9-4.6L5.5 9l4.6-1.4L12 3z"/><path d="M19 14l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8.8-2z"/><path d="M5 15l.6 1.6 1.6.6-1.6.6L5 19.4l-.6-1.6-1.6-.6 1.6-.6L5 15z"/></svg></span>
+        <span>按题材</span>
+        <span class="cnt" id="navSubjectCnt"></span>
+      </div>
+    </div>
+
+    <div class="side-sec" style="display:flex;flex-direction:column;flex:1;min-height:0">
+      <div class="side-sec-h">
+        <span>我的文件夹</span>
+        <button id="btnNewFolder" title="新建文件夹">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+      </div>
+      <ul id="folderList"></ul>
+      <div class="side-foot">
+        <div class="st-tip">照片全部保存在本地浏览器（IndexedDB），<b>不会上传到任何服务器</b>。清理浏览器数据会清空相册，记得定期导出。</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ===== 主区域 ===== -->
+  <main id="main">
+    <header id="topbar">
+      <button id="hamburger" title="菜单">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+      <div style="min-width:0">
+        <div id="viewTitle">全部照片</div>
+        <div id="viewSub"></div>
+      </div>
+      <div class="top-spacer"></div>
+      <div class="search-wrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+        <input id="searchInput" type="text" placeholder="搜索名称、颜色、地域、题材" autocomplete="off">
+        <button id="searchClear" title="清除">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+      <button class="tb-btn btn-ghost" id="btnOrganize" title="智能整理">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15.5l-1.9-4.6L5.5 9l4.6-1.4L12 3z"/><path d="M19 14l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8.8-2z"/></svg>
+        <span class="lbl">智能整理</span>
+      </button>
+      <button class="tb-btn btn-primary" id="btnUpload">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M6 10l6-6 6 6"/><path d="M4 20h16"/></svg>
+        <span class="lbl">上传照片</span>
+      </button>
+      <input type="file" id="fileInput" accept="image/*" multiple hidden>
+    </header>
+
+    <div id="content">
+      <div id="groupBar" style="display:none"></div>
+      <div id="grid"></div>
+      <div id="emptyState" class="show">
+        <div class="es-ic">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="15" rx="3"/><circle cx="9" cy="10" r="2"/><path d="M3 17l5-5 4 4 3-3 6 6"/></svg>
+        </div>
+        <h2 id="emptyTitle">把你的照片放进来</h2>
+        <p id="emptyDesc">拖拽照片到窗口任意位置，或点击下方按钮选择图片。<br>上传后可以按颜色、地域或题材自动整理。</p>
+        <button class="es-btn" id="emptyUpload">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M6 10l6-6 6 6"/><path d="M4 20h16"/></svg>
+          选择照片
+        </button>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ===== 选择工具栏 ===== -->
+<div id="selBar">
+  <span class="sel-count" id="selCount">已选 0 张</span>
+  <span class="sep"></span>
+  <button id="selMove"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h11v4M4 12h7v4M4 19h11"/><path d="M15 5l4 4-4 4"/></svg>移动</button>
+  <button id="selDownload"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12M6 10l6 6 6-6"/><path d="M4 20h16"/></svg>下载</button>
+  <button class="danger" id="selDelete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5h6v2M6.5 7l1 13h9l1-13M10 11v5M14 11v5"/></svg>删除</button>
+  <button id="selClear">取消</button>
+</div>
+
+<!-- ===== 灯箱 ===== -->
+<div id="lightbox">
+  <button id="lbClose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  <button class="lb-nav" id="lbPrev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
+  <button class="lb-nav" id="lbNext"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg></button>
+  <div class="lb-stage">
+    <img id="lbImg" alt="">
+    <div id="lbInfo">
+      <span class="lb-name" id="lbName"></span>
+      <span class="lb-tags" id="lbTags"></span>
+    </div>
+  </div>
+  <div id="lbTools">
+    <button id="lbMove"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h11v4M4 12h7v4M4 19h11"/><path d="M15 5l4 4-4 4"/></svg>移动</button>
+    <button id="lbDownload"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12M6 10l6 6 6-6"/><path d="M4 20h16"/></svg>下载</button>
+    <button id="lbDelete" style="color:#ff6961"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5h6v2M6.5 7l1 13h9l1-13M10 11v5M14 11v5"/></svg>删除</button>
+  </div>
+</div>
+
+<!-- ===== 弹窗容器 ===== -->
+<div id="modalRoot"><div class="modal" id="modalBox"></div></div>
+
+<!-- ===== Toast / 进度 / 遮罩 ===== -->
+<div id="toast"></div>
+<div id="uploadBar"><div class="ub-fill"></div></div>
+<div id="dropOverlay">
+  <div class="do-box">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="15" rx="3"/><circle cx="9" cy="10" r="2"/><path d="M3 17l5-5 4 4 3-3 6 6"/></svg>
+    <b>松手，照片交给我</b>
+    <p>正在读取图片并生成缩略图</p>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* =====================================================================
+   工具函数
+===================================================================== */
+const $  = s => document.querySelector(s);
+const $$ = s => Array.from(document.querySelectorAll(s));
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+function toast(msg, type){
+  const t = $('#toast');
+  const ok = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>';
+  const er = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+  t.innerHTML = (type === 'err' ? er : ok) + '<span>' + esc(msg) + '</span>';
+  t.className = type === 'err' ? 'show err' : 'show ok';
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => t.className = '', 2600);
+}
+
+function fmtCount(n){
+  return n >= 10000 ? (n/10000).toFixed(1) + ' 万' : String(n);
+}
+function fmtBytes(b){
+  if (b >= 1048576) return (b/1048576).toFixed(1) + ' MB';
+  if (b >= 1024) return Math.round(b/1024) + ' KB';
+  return b + ' B';
+}
+function fmtDate(ts){
+  const d = new Date(ts);
+  return d.getFullYear() + ' 年 ' + (d.getMonth()+1) + ' 月 ' + d.getDate() + ' 日';
+}
+
+/* =====================================================================
+   IndexedDB 封装
+===================================================================== */
+const DB_NAME = 'photo_organizer', DB_VER = 1;
+const S_META = 'meta', S_BLOBS = 'blobs', S_FOLDERS = 'folders';
+
+function openDB(){
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VER);
+    req.onupgradeneeded = e => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(S_META)) db.createObjectStore(S_META, {keyPath:'id'});
+      if (!db.objectStoreNames.contains(S_FOLDERS)) db.createObjectStore(S_FOLDERS, {keyPath:'id'});
+      if (!db.objectStoreNames.contains(S_BLOBS)){
+        const st = db.createObjectStore(S_BLOBS, {keyPath:'id'});
+        st.createIndex('kind','kind',{unique:false});
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+function idbReq(r){ return new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
+function dbAll(store){ return idbReq(_db.transaction(store,'readonly').objectStore(store).getAll()); }
+function dbGet(store, key){ return idbReq(_db.transaction(store,'readonly').objectStore(store).get(key)); }
+function dbPut(store, val){ return idbReq(_db.transaction(store,'readwrite').objectStore(store).put(val)); }
+function dbDel(store, key){ return idbReq(_db.transaction(store,'readwrite').objectStore(store).delete(key)); }
+function dbAllKind(kind){
+  return new Promise((res, rej) => {
+    const r = _db.transaction(S_BLOBS,'readonly').objectStore(S_BLOBS).index('kind').getAll(kind);
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  });
+}
+
+/* =====================================================================
+   全局状态
+===================================================================== */
+const state = {
+  meta: [],            // 照片元数据
+  folders: [],         // 文件夹
+  thumbs: new Map(),   // photoId -> objectURL（缩略图）
+  view: { type:'all', folderId:null, smart:null, group:null, q:'' },
+  selected: new Set(),
+  lb: null,            // 灯箱当前 photoId
+  geocodeCache: new Map(),
+  uploadAbort: false,
+};
+let _db = null;
+
+/* =====================================================================
+   颜色分析（完全离线，画布取主色）
+===================================================================== */
+function rgbToHsl(r, g, b){
+  r/=255; g/=255; b/=255;
+  const max = Math.max(r,g,b), min = Math.min(r,g,b);
+  let h = 0, s = 0;
+  const l = (max+min)/2;
+  if (max !== min){
+    const d = max-min;
+    s = l > .5 ? d/(2-max-min) : d/(max+min);
+    if (max===r) h = ((g-b)/d + (g<b?6:0));
+    else if (max===g) h = (b-r)/d + 2;
+    else h = (r-g)/d + 4;
+    h *= 60;
+  }
+  return [h, s, l];
+}
+
+function colorNameFromHsl(h, s, l){
+  if (s < 0.12){
+    if (l >= 0.9) return '白';
+    if (l <= 0.15) return '黑';
+    return '灰';
+  }
+  const warm = (h >= 330 && h <= 360) || h <= 55;
+  if (l >= 0.82 && (h <= 15 || h >= 315)) return '粉';
+  if (l <= 0.14) return '黑';
+  if (l >= 0.92) return '白';
+  if (s < 0.32 && warm && l >= 0.18 && l <= 0.62) return '棕';
+  if (h <= 12 || h >= 345) return '红';
+  if (h <= 38) return '橙';
+  if (h <= 68) return '黄';
+  if (h <= 160) return '绿';
+  if (h <= 198) return '青';
+  if (h <= 252) return '蓝';
+  if (h <= 290) return '紫';
+  if (h <= 330) return '粉';
+  return '红';
+}
+
+const COLOR_ORDER = ['红','橙','黄','绿','青','蓝','紫','粉','棕','灰','黑','白'];
+const COLOR_HEX = {
+  '红':'#ff453a','橙':'#ff9f0a','黄':'#ffd60a','绿':'#30d158','青':'#64d2ff',
+  '蓝':'#0a84ff','紫':'#bf5af2','粉':'#ff9bd2','棕':'#a2845e','灰':'#8e8e93','黑':'#1c1c1e','白':'#f5f5f7'
+};
+
+async function analyzeColor(img){
+  const size = 56;
+  const c = document.createElement('canvas');
+  c.width = size; c.height = size;
+  const ctx = c.getContext('2d', { willReadFrequently:true });
+  const iw = img.naturalWidth, ih = img.naturalHeight;
+  const sc = Math.max(size/iw, size/ih);
+  const dw = Math.max(1, Math.round(iw*sc)), dh = Math.max(1, Math.round(ih*sc));
+  ctx.drawImage(img, 0, 0, dw, dh);
+  const data = ctx.getImageData(0, 0, dw, dh).data;
+  // 用 4bit/通道 量化成桶，统计权重
+  const buckets = new Map();
+  for (let i = 0; i < data.length; i += 4){
+    const r = data[i], g = data[i+1], b = data[i+2];
+    const key = ((r>>4)<<8) | ((g>>4)<<4) | (b>>4);
+    const e = buckets.get(key);
+    if (e){ e.n++; e.r += r; e.g += g; e.b += b; } else buckets.set(key, {n:1, r, g, b});
+  }
+  let best = null;
+  for (const e of buckets.values()) if (!best || e.n > best.n) best = e;
+  const r = Math.round(best.r/best.n), g = Math.round(best.g/best.n), b = Math.round(best.b/best.n);
+  const [h, s, l] = rgbToHsl(r, g, b);
+  return {
+    hex: '#' + [r,g,b].map(v => v.toString(16).padStart(2,'0')).join(''),
+    name: colorNameFromHsl(h, s, l)
+  };
+}
+
+/* =====================================================================
+   EXIF GPS 解析（JPEG 专用，纯本地）
+===================================================================== */
+function readU16(dv, off, le){ return le ? dv.getUint16(off, true) : dv.getUint16(off, false); }
+function readU32(dv, off, le){ return le ? dv.getUint32(off, true) : dv.getUint32(off, false); }
+
+function parseTIFF(dv, base, le){
+  const ifd0 = readU32(dv, base+4, le);
+  if (ifd0 > dv.byteLength - 2) return null;
+  let gpsOff = null;
+  const n = readU16(dv, base+ifd0, le);
+  for (let i = 0; i < n; i++){
+    const e = base + ifd0 + 2 + i*12;
+    const tag = readU16(dv, e, le);
+    const type = readU16(dv, e+2, le);
+    const cnt = readU32(dv, e+4, le);
+    let valOff = e+8;
+    const sz = [0,1,1,2,4,8][type] || 0;
+    if (sz * cnt > 4) valOff = base + readU32(dv, e+8, le);
+    if (tag === 0x8825 && type === 4 && cnt === 1) gpsOff = readU32(dv, e+8, le);
+    if (tag === 0x8769) continue; // Exif IFD 本工具暂不需要
+  }
+  if (gpsOff === null) return null;
+  // 解析 GPS IFD
+  const gbase = base + gpsOff;
+  if (gbase > dv.byteLength - 2) return null;
+  const gn = readU16(dv, gbase, le);
+  let latRef = '', lonRef = '', lat = null, lon = null;
+  for (let i = 0; i < gn; i++){
+    const e = gbase + 2 + i*12;
+    const tag = readU16(dv, e, le);
+    const type = readU16(dv, e+2, le);
+    const cnt = readU32(dv, e+4, le);
+    const sz = [0,1,1,2,4,8][type] || 0;
+    const valOff = sz*cnt > 4 ? gbase + readU32(dv, e+8, le) : e+8;
+    if (tag === 1){ // 纬度参考 N/S
+      let s = '';
+      for (let k = 0; k < Math.min(cnt, 2); k++) s += String.fromCharCode(dv.getUint8(valOff+k));
+      latRef = s.trim();
+    } else if (tag === 2 && cnt === 3){ // 纬度
+      lat = [0,1,2].map(k => readU32(dv, valOff+k*8, le) / readU32(dv, valOff+k*8+4, le));
+    } else if (tag === 3){ // 经度参考 E/W
+      let s = '';
+      for (let k = 0; k < Math.min(cnt, 2); k++) s += String.fromCharCode(dv.getUint8(valOff+k));
+      lonRef = s.trim();
+    } else if (tag === 4 && cnt === 3){ // 经度
+      lon = [0,1,2].map(k => readU32(dv, valOff+k*8, le) / readU32(dv, valOff+k*8+4, le));
+    }
+  }
+  if (lat === null || lon === null) return null;
+  const dms = a => a[0] + a[1]/60 + a[2]/3600;
+  return {
+    lat: (latRef.toUpperCase() === 'S' ? -1 : 1) * dms(lat),
+    lng: (lonRef.toUpperCase() === 'W' ? -1 : 1) * dms(lon)
+  };
+}
+
+async function extractGPS(file){
+  try{
+    if (file.type !== 'image/jpeg' && !/\.jpe?g$/i.test(file.name)) return null;
+    const buf = await file.arrayBuffer();
+    const dv = new DataView(buf);
+    if (dv.byteLength < 4 || dv.getUint16(0) !== 0xFFD8) return null;
+    let off = 2;
+    while (off < dv.byteLength - 4){
+      if (dv.getUint8(off) !== 0xFF){ off++; continue; }
+      const marker = dv.getUint8(off+1);
+      if (marker === 0xD8 || marker === 0xD9) { off += 2; continue; }
+      if (marker >= 0xD0 && marker <= 0xD7){ off += 2; continue; }
+      if (marker === 0xDA) break; // 图像数据开始，结束扫描
+      const len = dv.getUint16(off+2);
+      if (len < 2) break;
+      if (marker === 0xE1){
+        let sig = '';
+        for (let k = 0; k < 6; k++) sig += String.fromCharCode(dv.getUint8(off+4+k));
+        if (sig === 'Exif\0\0'){
+          const le = dv.getUint16(off+10) === 0x4949; // II=小端, MM=大端
+          return parseTIFF(dv, off+10, le);
+        }
+      }
+      off += 2 + len;
+    }
+  }catch(e){ /* 解析失败视为无 GPS */ }
+  return null;
+}
+
+/* =====================================================================
+   逆地理编码（BigDataCloud 免费接口，中文）
+===================================================================== */
+async function reverseGeocode(lat, lng){
+  const key = lat.toFixed(3) + ',' + lng.toFixed(3);
+  if (state.geocodeCache.has(key)) return state.geocodeCache.get(key);
+  try{
+    const url = 'https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=' +
+      encodeURIComponent(lat) + '&longitude=' + encodeURIComponent(lng) + '&localityLanguage=zh';
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 8000);
+    const resp = await fetch(url, { signal: ctrl.signal });
+    clearTimeout(t);
+    if (!resp.ok) throw new Error(resp.status);
+    const j = await resp.json();
+    const parts = [j.city || j.locality, j.principalSubdivision, j.countryName].filter(Boolean);
+    const name = parts.join(' · ') || ('坐标 ' + lat.toFixed(2) + '°, ' + lng.toFixed(2) + '°');
+    state.geocodeCache.set(key, name);
+    return name;
+  }catch(e){
+    const name = '坐标 ' + lat.toFixed(2) + '°, ' + lng.toFixed(2) + '°';
+    state.geocodeCache.set(key, name);
+    return name;
+  }
+}
+
+/* =====================================================================
+   AI 题材识别（TensorFlow.js + MobileNet，按需加载）
+===================================================================== */
+let aiState = 'idle'; // idle | loading | ready | failed
+
+function ensureAI(){
+  if (aiState === 'ready' || aiState === 'loading') return aiState === 'ready' ? Promise.resolve(true) : aiState;
+  if (aiState === 'failed') return Promise.resolve(false);
+  aiState = 'loading';
+  return new Promise((resolve) => {
+    const load = (src) => new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = src;
+      s.onload = res; s.onerror = rej;
+      document.head.appendChild(s);
+    });
+    (async () => {
+      try{
+        await load('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js');
+        await load('https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.1/dist/mobilenet.min.js');
+        await tf.ready();
+        window.mobilenetModel = await mobilenet.load({ version: 2, alpha: 0.5 });
+        aiState = 'ready';
+        resolve(true);
+      }catch(e){
+        aiState = 'failed';
+        resolve(false);
+      }
+    })();
+  });
+}
+
+const SUBJECT_MAP = [
+  [/tabby|tiger cat|persian cat|egyptian cat|cat/i,'猫'],
+  [/dog|poodle|labrador|beagle|hound|terrier|retriever|husky|collie|chow|dalmatian|malamute|mastiff|pomeranian|pug|shih-tzu|boxer|chihuahua|pekinese|papillon|rottweiler|samoyed|shiba|tibetan|vizsla|weimaraner|welsh|west highland|whippet/i,'狗'],
+  [/person|suit|gown|academic gown|cowboy hat|sombrero|kimono|mortarboard|ballplayer|groom|bridegroom|scuba diver|swimming trunks|bathing cap/i,'人像'],
+  [/bird|robin|jay|magpie|hen|cock|ostrich|peacock|quail|snowbird|water bird|black grouse|partridge|brambling|bulbul|cardinal|chickadee|cockatoo|drake|goldfinch|grosbeak|hummingbird|indigo bunting|junco|kingfisher|kite|limpkin|macaw|osprey|oystercatcher|pelican|redbreast|redshank|spoonbill|starling|toucan|vulture|waxwing|white stork|egret|flamingo|goose|swan|duck|penguin/i,'鸟类'],
+  [/flower|daisy|orchid|poppy|rose|sunflower|tulip|buttercup|hibiscus|pitcher plant/i,'花卉'],
+  [/car|jeep|minivan|limousine|beach wagon|cab|racer|sports car|convertible|pickup|police van|taxi|tractor|forklift|garbage truck|fire engine|moving van|snowplow|streetcar|trolleybus|ambulance|minibus/i,'车辆'],
+  [/bicycle|mountain bike|motor scooter|motorcycle|moped|snowmobile|tricycle|unicycle/i,'骑行与摩托'],
+  [/pizza|hamburger|hotdog|pretzel|bagel|burrito|guacamole|cheeseburger|club sandwich|french loaf|ice cream|ice lolly|meat loaf|pancake|potpie|spaghetti|custard|dough|doughnut|espresso|french fries|mashed potato|mushroom|orange|pomegranate|pineapple|peach|pear|apple|banana|lemon|lime|fig|grape|watermelon|honeycomb|bakery|cauliflower|corn|cucumber|hot pot|jack-o'-lantern|lettuce|mango|nectarine|papaya|pastry|potato|pumpkin|radish|red wine|rice|salad|sandwich|sausage|soup bowl|soy sauce|strawberry|sweet pepper|taco|teapot|tomato|trifle|turnip|waffle|wine bottle|zucchini/i,'美食'],
+  [/building|palace|castle|church|monastery|mosque|temple|library|bookshop|barn|boathouse|cabin|cliff dwelling|drugstore|grocery store|hardware store|hospital|hotel|house|jail|lighthouse|mobile home|restaurant|school|shopfront|supermarket|synagogue|theater|triumphal arch|warehouse|windmill|yurt/i,'建筑'],
+  [/mountain|alp|cliff|geyser|volcano|seashore|sandbar|lakeside|promontory|valley|coral reef|ocean|breakwater/i,'山水风光'],
+  [/tree|plant|leaf|fern|moss|mushroom|pine|pinecone|acorn|oak|bonsai/i,'树木绿植'],
+  [/sunrise|sunset|cloud|rainbow|thunderstorm|lightning|sky/i,'天空云霞'],
+  [/bear|bison|boar|cheetah|chimpanzee|elephant|fox|giraffe|hippopotamus|hyena|impala|jaguar|killer whale|koala|leopard|lion|lizard|marmot|mongoose|orangutan|otter|panda|polar bear|porcupine|raccoon|red panda|rhinoceros|skunk|sloth|snow leopard|squirrel|tiger|wallaby|weasel|wild boar|wildebeest|wolf|zebra|camel|antelope|armadillo|axolotl|badger|bat|beaver|butterfly|centipede|chameleon|cobra|coral snake|dragonfly|frog|gecko|goldfish|grasshopper|hermit crab|hog|horse|jellyfish|ladybug|millipede|scorpion|sea lion|sea urchin|seal|shark|sheep|slug|snail|snake|spider|squid|starfish|stingray|turtle|whale|wood rabbit|worm/i,'动物'],
+  [/boat|canoe|container ship|fireboat|freighter|lifeboat|pirate|submarine|yawl|yacht|dock|schooner|speedboat/i,'船只'],
+  [/airliner|aircraft carrier|airship|balloon|warplane|space shuttle|parachute|hang glider|wing/i,'飞机'],
+  [/snow|ski|snowboard|ice skate|sled|bobsled|curling stone|snowmobile/i,'冰雪'],
+  [/guitar|piano|violin|accordion|banjo|cello|clarinet|drum|electric guitar|flute|harmonica|harp|maraca|ocarina|organ|sax|trombone|trumpet|ukulele|whistle/i,'乐器'],
+  [/clock|watch|digital clock|wall clock|hourglass|analog clock|sundial/i,'时钟'],
+  [/book|comic book|envelope|letter|magazine|newspaper|notebook|paperback|book jacket|bookcase|jigsaw puzzle|menu|packet|poster|quill|score/i,'书本与文字'],
+  [/computer|laptop|monitor|screen|keyboard|mouse|printer|hard disc|tape player|ipod|modem|projector|radio|remote|telephone|cellphone|switch|television|video camera|vcr|joystick|polaroid|camera|photocopier|typewriter|hand-held computer|desktop computer/i,'数码电子'],
+  [/bottle|cup|mug|beer|coffee|wine|water bottle|pitcher|teapot|pop bottle|carafe|goblet|vase|basket|bucket|barrel|beaker|carton|coffeepot|crock pot|frying pan|ladle|measuring cup|mixing bowl|pan|pot|pressure cooker|skillet|toaster|wok/i,'器物与厨具'],
+  [/train|railway|railroad|locomotive|subway|bullet train|freight car|passenger car/i,'火车'],
+  [/street|road|highway|parking meter|traffic light|pole|suspension bridge|turnstile|dam|fountain|pedestrian bridge|pier|platform/i,'街道桥梁'],
+  [/beach|seashore|seacoast|seaside|tidal wave/i,'海滩'],
+  [/trench coat|umbrella|backpack|bib|bonnet|buckle|cardigan|jean|jersey|mitten|muff|necklace|poncho|purse|sarong|sunglasses|sweatshirt|swimming trunks|tights|wallet|wig|bikini|hat|sandal|sneaker|sock|boot|shoelace|shoe|slipper|clog|loafer|running shoe|jersey/i,'服饰配饰'],
+];
+
+function mapSubject(label){
+  const lower = String(label).toLowerCase();
+  for (const [re, zh] of SUBJECT_MAP){
+    if (re.test(lower)) return zh;
+  }
+  return label;
+}
+
+async function classifyImage(imgEl){
+  const res = await window.mobilenetModel.classify(imgEl, 3);
+  return mapSubject(res && res[0] && res[0].className ? res[0].className : '未知');
+}
+
+/* =====================================================================
+   视图与渲染
+===================================================================== */
+function smartKey(m){
+  if (state.view.smart === 'color') return m.colorName || '未识别';
+  if (state.view.smart === 'region') return m.region || '未标注位置';
+  return m.subjectZh || '未识别';
+}
+
+function viewPhotos(){
+  let list = state.meta;
+  if (state.view.type === 'folder') list = list.filter(m => m.folderId === state.view.folderId);
+  else if (state.view.type === 'smart' && state.view.group) list = list.filter(m => smartKey(m) === state.view.group);
+  const q = state.view.q.trim().toLowerCase();
+  if (q){
+    list = list.filter(m => [m.name, m.colorName, m.region, m.subjectZh, m.subject]
+      .filter(Boolean).some(v => String(v).toLowerCase().includes(q)));
+  }
+  return list;
+}
+
+function smartGroups(){
+  const map = new Map();
+  for (const m of viewPhotos()){
+    const k = smartKey(m);
+    if (!map.has(k)) map.set(k, []);
+    map.get(k).push(m);
+  }
+  let keys = [...map.keys()];
+  if (state.view.smart === 'color'){
+    keys.sort((a,b) => { const ia = COLOR_ORDER.indexOf(a), ib = COLOR_ORDER.indexOf(b);
+      return (ia<0?99:ia) - (ib<0?99:ib); });
+  } else {
+    keys.sort((a,b) => map.get(b).length - map.get(a).length);
+  }
+  return keys.map(k => ({ key:k, items: map.get(k) }));
+}
+
+function viewTitleText(){
+  const t = state.view;
+  if (t.type === 'folder'){
+    const f = state.folders.find(x => x.id === t.folderId);
+    return f ? f.name : '全部照片';
+  }
+  if (t.type === 'smart'){
+    if (t.smart === 'color') return '按颜色';
+    if (t.smart === 'region') return '按地域';
+    return '按题材';
+  }
+  return '全部照片';
+}
+function viewSubText(){
+  const t = state.view;
+  const n = viewPhotos().length;
+  if (t.type === 'smart' && !t.group){
+    const g = smartGroups().length;
+    return `${fmtCount(n)} 张照片 · ${g} 个分组`;
+  }
+  if (t.type === 'folder') return `${fmtCount(n)} 张照片 · 我的文件夹`;
+  return `${fmtCount(n)} 张照片`;
+}
+
+function renderTopbar(){
+  $('#viewTitle').textContent = viewTitleText();
+  $('#viewSub').textContent = viewSubText();
+  $('#navAllCnt').textContent = fmtCount(state.meta.length);
+  ['color','region','subject'].forEach(k => {
+    const el = $('#nav' + k[0].toUpperCase() + k.slice(1) + 'Cnt');
+    if (el){
+      const n = state.meta.filter(m => smartKeyOf(k, m) !== (k==='region'?'未标注位置':'未识别')).length;
+      el.textContent = n ? fmtCount(n) : '';
+    }
+  });
+  $$('.side-item').forEach(el => {
+    const v = el.dataset.view;
+    const smart = el.dataset.smart;
+    const on = v === 'smart' ? (state.view.type==='smart' && state.view.smart===smart) : (state.view.type === v);
+    el.classList.toggle('active', on);
+  });
+  // 组内返回条 / 智能相簿操作条
+  const gb = $('#groupBar');
+  if (state.view.type === 'smart'){
+    gb.style.display = 'flex';
+    const back = state.view.group
+      ? '<button class="gb-back" id="gbBack"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>返回全部</button>' +
+        '<span class="gb-name">' + esc(state.view.group) + '</span>'
+      : '<span class="gb-name" style="font-size:13px;color:var(--text-3);font-weight:400">' +
+        (state.view.smart==='color' ? '按主色调自动分组，点击「只看此组」可聚焦单个颜色' :
+         state.view.smart==='region' ? '读取 GPS 信息反查地名，点击「只看此组」可聚焦单个地点' :
+         'AI 识别画面内容，点击「只看此组」可聚焦单个题材') + '</span>';
+    const ra = '<button class="gb-back" id="btnReanalyze" style="margin-left:auto">' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3"/><path d="M18 3v4h-4M6 21v-4h4"/></svg>重新分析</button>';
+    gb.innerHTML = back + ra;
+    const bk = $('#gbBack');
+    if (bk && state.view.group) bk.onclick = () => { state.view.group = null; renderAll(); };
+  } else {
+    gb.style.display = 'none';
+    gb.innerHTML = '';
+  }
+}
+
+function smartKeyOf(kind, m){
+  if (kind === 'color') return m.colorName || '未识别';
+  if (kind === 'region') return m.region || '未标注位置';
+  return m.subjectZh || '未识别';
+}
+
+const CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>';
+
+function cardHTML(m, badge){
+  const url = state.thumbs.get(m.id);
+  const sel = state.selected.has(m.id) ? ' selected' : '';
+  const bd = badge ? '<div class="pc-badge">' + esc(badge) + '</div>' : '';
+  return '<div class="photo-card' + sel + '" data-id="' + m.id + '" draggable="true" title="' + esc(m.name) + '">' +
+    (url ? '<img src="' + url + '" loading="lazy" alt="' + esc(m.name) + '">' : '') +
+    '<div class="pc-check">' + CHECK_SVG + '</div>' + bd + '</div>';
+}
+
+function renderGrid(){
+  const grid = $('#grid');
+  const empty = $('#emptyState');
+  const t = state.view;
+
+  if (t.type === 'smart' && !t.group){
+    const groups = smartGroups();
+    if (!groups.length){
+      showEmpty('还没有可展示的照片', emptyDescByView());
+      grid.innerHTML = '';
+      return;
+    }
+    empty.classList.remove('show');
+    const frag = document.createDocumentFragment();
+    for (const g of groups){
+      const sec = document.createElement('div');
+      const dot = t.smart === 'color' ? (COLOR_HEX[g.key] || '#8e8e93')
+        : (g.items[0].colorHex || '#8e8e93');
+      sec.innerHTML = '<div class="smart-h"><span class="sh-dot" style="background:' + dot + '"></span>' +
+        '<span class="sh-name">' + esc(g.key) + '</span>' +
+        '<span class="sh-cnt">' + g.items.length + ' 张</span>' +
+        '<button class="sh-open" data-group="' + esc(g.key) + '">只看此组</button></div>' +
+        '<div class="grid-sec">' + g.items.map(m => cardHTML(m, t.smart==='color' ? null : g.key)).join('') + '</div>';
+      sec.querySelector('.sh-open').onclick = () => { state.view.group = g.key; state.view.q=''; $('#searchInput').value=''; renderAll(); };
+      frag.appendChild(sec);
+    }
+    grid.innerHTML = '';
+    grid.appendChild(frag);
+    return;
+  }
+
+  const list = viewPhotos();
+  if (!list.length){
+    showEmpty(emptyTitleByView(), emptyDescByView());
+    grid.innerHTML = '';
+    return;
+  }
+  empty.classList.remove('show');
+  grid.innerHTML = list.map(m => cardHTML(m, null)).join('');
+}
+
+function emptyTitleByView(){
+  const t = state.view;
+  if (t.type === 'folder') return '这个文件夹还是空的';
+  if (t.type === 'smart' && t.group) return '这个分组里没有照片';
+  return '还没有照片';
+}
+function emptyDescByView(){
+  const t = state.view;
+  if (t.type === 'folder') return '上传照片后，在全部照片里选中它们，拖到侧边栏的这个文件夹，或使用「移动」。';
+  if (t.type === 'smart') return '上传照片后会自动分析颜色；地域需要照片带 GPS 信息；题材识别需要联网加载 AI 模型。';
+  return '拖拽照片到窗口任意位置，或点击「上传照片」选择图片。';
+}
+function showEmpty(title, desc){
+  const empty = $('#emptyState');
+  empty.classList.add('show');
+  $('#emptyTitle').textContent = title;
+  $('#emptyDesc').innerHTML = desc.replace(/\n/g, '<br>');
+}
+
+function renderFolders(){
+  const ul = $('#folderList');
+  if (!state.folders.length){
+    ul.innerHTML = '<li class="empty-hint">还没有文件夹，点右上角 + 新建一个，给照片分类。</li>';
+    return;
+  }
+  ul.innerHTML = state.folders.map(f => {
+    const n = state.meta.filter(m => m.folderId === f.id).length;
+    return '<li class="side-item folder-item" data-fid="' + f.id + '" data-name="' + esc(f.name) + '">' +
+      '<span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg></span>' +
+      '<span class="f-name" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(f.name) + '</span>' +
+      '<span class="cnt">' + fmtCount(n) + '</span>' +
+      '<span class="acts">' +
+      '<button class="f-rename" title="重命名"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19.5 8.5a2.1 2.1 0 0 0-3-3L5 17v3z"/></svg></button>' +
+      '<button class="f-del danger" title="删除文件夹"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5h6v2M6.5 7l1 13h9l1-13M10 11v5M14 11v5"/></svg></button>' +
+      '</span></li>';
+  }).join('');
+}
+
+function renderSelBar(){
+  const bar = $('#selBar');
+  const n = state.selected.size;
+  $('#selCount').textContent = '已选 ' + n + ' 张';
+  bar.classList.toggle('show', n > 0);
+}
+
+function renderAll(){
+  renderTopbar();
+  renderFolders();
+  renderGrid();
+  renderSelBar();
+}
+
+/* =====================================================================
+   上传
+===================================================================== */
+function loadImage(url){
+  return new Promise(res => {
+    const img = new Image();
+    img.onload = () => res(img);
+    img.onerror = () => res(null);
+    img.src = url;
+  });
+}
+function canvasBlob(canvas, type, q){
+  return new Promise(res => canvas.toBlob(b => res(b), type, q));
+}
+async function makeThumb(img){
+  const edge = 900;
+  const scale = Math.min(1, edge / Math.max(img.naturalWidth, img.naturalHeight));
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(img.naturalWidth * scale));
+  c.height = Math.max(1, Math.round(img.naturalHeight * scale));
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  const thumb = await canvasBlob(c, 'image/jpeg', 0.82);
+  return thumb;
+}
+
+async function processOne(file){
+  const url = URL.createObjectURL(file);
+  let img = null;
+  try{ img = await loadImage(url); }catch(e){}
+  if (!img){ URL.revokeObjectURL(url); throw new Error('decode'); }
+  const thumb = await makeThumb(img);
+  const color = await analyzeColor(img);
+  const gps = await extractGPS(file);
+  const id = uid();
+  const m = {
+    id, name: file.name, addedAt: Date.now(), folderId: null,
+    width: img.naturalWidth, height: img.naturalHeight,
+    colorHex: color.hex, colorName: color.name,
+    gps, region: null, subjectZh: null, subject: null,
+    analyzed: { gps: !!gps, region: !!gps, subject: false }
+  };
+  await dbPut(S_META, m);
+  await dbPut(S_BLOBS, { id: id + ':t', kind: 'thumb', photoId: id, blob: thumb });
+  await dbPut(S_BLOBS, { id: id + ':f', kind: 'full', photoId: id, blob: file });
+  state.meta.push(m);
+  state.thumbs.set(id, URL.createObjectURL(thumb));
+  URL.revokeObjectURL(url);
+}
+
+async function handleFiles(fileList){
+  const files = Array.from(fileList || []).filter(f => f.type.startsWith('image/'));
+  if (!files.length){ toast('没有可用的图片文件', 'err'); return; }
+  const bar = $('#uploadBar');
+  bar.classList.add('show');
+  const fill = bar.querySelector('.ub-fill');
+  fill.style.width = '2%';
+  let ok = 0, fail = 0;
+  for (let i = 0; i < files.length; i++){
+    fill.style.width = Math.round((i / files.length) * 96) + '%';
+    try{
+      await processOne(files[i]);
+      ok++;
+    }catch(e){ fail++; }
+    await sleep(0);
+  }
+  fill.style.width = '100%';
+  setTimeout(() => bar.classList.remove('show'), 400);
+  renderAll();
+  toast(ok ? '已上传 ' + ok + ' 张照片' + (fail ? '，' + fail + ' 张无法读取' : '') : '上传失败，请检查文件格式', fail && !ok ? 'err' : 'ok');
+}
+
+/* =====================================================================
+   选择 / 移动 / 删除 / 下载
+===================================================================== */
+function selectPhoto(id, additive){
+  if (!additive) state.selected.clear();
+  if (state.selected.has(id)) state.selected.delete(id);
+  else state.selected.add(id);
+  renderGrid();
+  renderSelBar();
+}
+
+async function movePhotos(ids, folderId){
+  let n = 0;
+  for (const id of ids){
+    const m = state.meta.find(x => x.id === id);
+    if (!m) continue;
+    m.folderId = folderId;
+    await dbPut(S_META, m);
+    n++;
+  }
+  state.selected.clear();
+  renderAll();
+  const f = state.folders.find(x => x.id === folderId);
+  toast('已移动 ' + n + ' 张照片到「' + (f ? f.name : '未分类') + '」');
+}
+
+async function deletePhotos(ids){
+  for (const id of ids){
+    const m = state.meta.find(x => x.id === id);
+    if (!m) continue;
+    await dbDel(S_META, id);
+    await dbDel(S_BLOBS, id + ':t');
+    await dbDel(S_BLOBS, id + ':f');
+    const u = state.thumbs.get(id);
+    if (u) URL.revokeObjectURL(u);
+    state.thumbs.delete(id);
+    state.meta = state.meta.filter(x => x.id !== id);
+    state.selected.delete(id);
+  }
+  renderAll();
+  toast('已删除 ' + ids.length + ' 张照片');
+}
+
+async function downloadPhoto(id){
+  const rec = await dbGet(S_BLOBS, id + ':f');
+  if (!rec) return;
+  const m = state.meta.find(x => x.id === id);
+  const url = URL.createObjectURL(rec.blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = m ? m.name : (id + '.jpg');
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+/* =====================================================================
+   文件夹 CRUD
+===================================================================== */
+function uniqueName(base, list){
+  let name = base, i = 2;
+  const exists = n => list.some(f => f.name === n);
+  while (exists(name)) name = base + ' ' + i++;
+  return name;
+}
+function askName(title, desc, value, onOk){
+  const box = $('#modalBox');
+  box.innerHTML = '<h3>' + esc(title) + '</h3><p class="m-desc">' + esc(desc) + '</p>' +
+    '<input type="text" id="nameInput" maxlength="30" value="' + esc(value || '') + '" placeholder="文件夹名称" autofocus>' +
+    '<div class="m-actions"><button class="m-cancel" data-close>取消</button><button class="m-ok" id="nameOk">确定</button></div>';
+  openModal();
+  const input = $('#nameInput');
+  input.focus();
+  input.setSelectionRange(input.value.length, input.value.length);
+  const done = () => {
+    const v = input.value.trim();
+    if (!v){ input.focus(); return; }
+    closeModal();
+    onOk(v);
+  };
+  $('#nameOk').onclick = done;
+  input.onkeydown = e => { if (e.key === 'Enter') done(); if (e.key === 'Escape') closeModal(); };
+}
+
+function createFolder(name){
+  const f = { id: uid(), name: uniqueName(name, state.folders), createdAt: Date.now() };
+  state.folders.push(f);
+  dbPut(S_FOLDERS, f);
+  renderFolders();
+  toast('已新建文件夹「' + f.name + '」');
+}
+function renameFolder(id, name){
+  const f = state.folders.find(x => x.id === id);
+  if (!f) return;
+  const v = name.trim();
+  if (!v || v === f.name) return;
+  f.name = uniqueName(v, state.folders.filter(x => x.id !== id));
+  dbPut(S_FOLDERS, f);
+  renderAll();
+  toast('已重命名为「' + f.name + '」');
+}
+async function deleteFolder(id){
+  const f = state.folders.find(x => x.id === id);
+  if (!f) return;
+  const box = $('#modalBox');
+  const inPhotos = state.meta.filter(m => m.folderId === id).length;
+  box.innerHTML = '<h3>删除「' + esc(f.name) + '」？</h3>' +
+    '<p class="m-desc">文件夹里的 ' + inPhotos + ' 张照片会移回未分类，照片本身不会被删除。</p>' +
+    '<div class="m-actions"><button class="m-cancel" data-close>取消</button><button class="m-ok m-danger" id="delOk">删除文件夹</button></div>';
+  openModal();
+  $('#delOk').onclick = async () => {
+    closeModal();
+    for (const m of state.meta.filter(x => x.folderId === id)){
+      m.folderId = null;
+      await dbPut(S_META, m);
+    }
+    state.folders = state.folders.filter(x => x.id !== id);
+    await dbDel(S_FOLDERS, id);
+    if (state.view.type === 'folder' && state.view.folderId === id){ state.view = { type:'all', folderId:null, smart:null, group:null, q:'' }; }
+    renderAll();
+    toast('已删除文件夹「' + f.name + '」');
+  };
+}
+
+function openMoveDialog(ids){
+  const box = $('#modalBox');
+  const folders = state.folders.map(f =>
+    '<li data-fid="' + f.id + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>' + esc(f.name) + '</li>').join('');
+  box.innerHTML = '<h3>移动到</h3><p class="m-desc">将 ' + ids.length + ' 张照片移动到：</p>' +
+    '<ul class="move-list">' +
+    '<li data-fid="__none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>未分类</li>' +
+    (folders || '') + '</ul>' +
+    '<div class="m-actions"><button class="m-cancel" data-close>取消</button></div>';
+  openModal();
+  box.querySelectorAll('.move-list li').forEach(li => {
+    li.onclick = () => { closeModal(); movePhotos(ids, li.dataset.fid === '__none' ? null : li.dataset.fid); };
+  });
+}
+
+/* =====================================================================
+   弹窗 / Toast 控制
+===================================================================== */
+function openModal(){ $('#modalRoot').classList.add('show'); }
+function closeModal(){ $('#modalRoot').classList.remove('show'); }
+$('#modalRoot').addEventListener('click', e => {
+  if (e.target === $('#modalRoot')) closeModal();
+  const c = e.target.closest('[data-close]');
+  if (c) closeModal();
+});
+
+/* =====================================================================
+   智能整理（一键按 颜色/地域/题材 生成文件夹）
+===================================================================== */
+let abortAnalyze = false;
+
+async function analyzeFor(mode, onProgress){
+  const total = Math.max(1, state.meta.length);
+  let done = 0;
+  const tick = n => { done += n; onProgress && onProgress(Math.min(100, Math.round(done/total*100)), Math.min(done, total), total); };
+  if (mode === 'region'){
+    const need = state.meta.filter(m => m.gps && !m.region);
+    for (const m of need){
+      if (abortAnalyze) return { aborted:true };
+      m.region = await reverseGeocode(m.gps.lat, m.gps.lng);
+      m.analyzed.region = true;
+      await dbPut(S_META, m);
+      tick(1);
+    }
+    tick(total - done);
+    return { ok:true };
+  }
+  if (mode === 'subject'){
+    const ok = await ensureAI();
+    if (!ok) return { error:'AI 模型加载失败，请检查网络连接后重试' };
+    const need = state.meta.filter(m => !m.subjectZh);
+    for (const m of need){
+      if (abortAnalyze) return { aborted:true };
+      try{
+        const rec = await dbGet(S_BLOBS, m.id + ':t');
+        if (rec){
+          const url = URL.createObjectURL(rec.blob);
+          const img = await loadImage(url);
+          if (img){
+            m.subjectZh = await classifyImage(img);
+            m.analyzed.subject = true;
+            await dbPut(S_META, m);
+          }
+          URL.revokeObjectURL(url);
+        }
+      }catch(e){}
+      tick(1);
+    }
+    tick(total - done);
+    return { ok:true };
+  }
+  // color：上传时已分析
+  return { ok:true };
+}
+
+function organizeGroups(mode){
+  const map = new Map();
+  for (const m of state.meta){
+    let k;
+    if (mode === 'color') k = m.colorName || '未识别';
+    else if (mode === 'region') k = m.region || '未标注位置';
+    else k = m.subjectZh || '未识别';
+    if (!map.has(k)) map.set(k, []);
+    map.get(k).push(m);
+  }
+  const order = mode === 'color' ? COLOR_ORDER : null;
+  let keys = [...map.keys()];
+  if (order) keys.sort((a,b) => { const ia=order.indexOf(a), ib=order.indexOf(b); return (ia<0?99:ia)-(ib<0?99:ib); });
+  else keys.sort((a,b) => map.get(b).length - map.get(a).length);
+  return keys.map(k => ({ key:k, items: map.get(k), off: (k==='未识别'||k==='未标注位置') }));
+}
+
+function openOrganize(){
+  const box = $('#modalBox');
+  let mode = 'color';
+  const descs = {
+    color:'按照片主色调自动分组，全程本地计算，无需联网。',
+    region:'读取照片内 GPS 信息（相机拍摄通常自带），联网反查城市地名；无位置信息的照片归入「未标注位置」。',
+    subject:'加载本地 AI 模型识别画面内容，首次使用需联网下载模型。'
+  };
+  const segSVG = {
+    color:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="11" r="1.1"/><circle cx="11" cy="8" r="1.1"/><circle cx="15.5" cy="11.5" r="1.1"/><circle cx="10" cy="14.5" r="1.1"/><path d="M12 3a9 9 0 1 0 9 9c0-1.5-.8-2.5-2-2.5h-2.2c-.9 0-1.5-.6-1.5-1.4 0-.4.2-.8.5-1.1.4-.4.6-.8.6-1.3 0-1-.8-1.7-1.9-1.7h-1.4C11 4.3 9 3.4 7.6 4.1"/></svg>',
+    region:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-5.5 7-11a7 7 0 1 0-14 0c0 5.5 7 11 7 11z"/><circle cx="12" cy="10" r="2.6"/></svg>',
+    subject:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15.5l-1.9-4.6L5.5 9l4.6-1.4L12 3z"/></svg>'
+  };
+  function renderStep1(){
+    box.innerHTML = '<h3>智能整理</h3><p class="m-desc">选择一种整理方式，我会分析全部照片，并自动生成同名文件夹把照片归位。你也可以随时在智能相簿里先看看分组效果。</p>' +
+      '<div class="seg">' + ['color','region','subject'].map(k =>
+        '<button data-mode="' + k + '" class="' + (k===mode?'on':'') + '">' + segSVG[k] + '<span>' + (k==='color'?'按颜色':k==='region'?'按地域':'按题材') + '</span></button>').join('') + '</div>' +
+      '<div class="seg-desc" id="segDesc">' + descs[mode] + '</div>' +
+      '<div class="m-actions"><button class="m-cancel" data-close>取消</button><button class="m-ok" id="startOrg">开始整理</button></div>';
+    box.querySelectorAll('.seg button').forEach(b => {
+      b.onclick = () => {
+        mode = b.dataset.mode;
+        box.querySelectorAll('.seg button').forEach(x => x.classList.remove('on'));
+        b.classList.add('on');
+        $('#segDesc').textContent = descs[mode];
+      };
+    });
+    $('#startOrg').onclick = runOrganize;
+  }
+  async function runOrganize(){
+    abortAnalyze = false;
+    box.innerHTML = '<h3>正在分析</h3>' +
+      '<div class="prog"><div class="p-row"><span id="pText">准备中…</span><span id="pCnt">0 / 0</span></div><div class="p-bar"><div class="p-fill" id="pFill"></div></div></div>' +
+      '<div class="m-actions"><button class="m-cancel" id="orgCancel">取消</button></div>';
+    openModal();
+    const pFill = $('#pFill'), pText = $('#pText'), pCnt = $('#pCnt');
+    $('#orgCancel').onclick = () => { abortAnalyze = true; };
+    const res = await analyzeFor(mode, (pct, done, total) => {
+      pFill.style.width = pct + '%';
+      pCnt.textContent = done + ' / ' + total;
+      pText.textContent = pct < 100 ? (mode==='region' ? '正在反查位置…' : mode==='subject' ? '正在识别题材…' : '分析完成') : '分析完成';
+    });
+    if (res.aborted){ closeModal(); return; }
+    if (res.error){ closeModal(); toast(res.error, 'err'); return; }
+    showPreview();
+  }
+  function showPreview(){
+    const groups = organizeGroups(mode).filter(g => g.items.length);
+    if (!groups.length){ closeModal(); toast('还没有可整理的照片', 'err'); return; }
+    box.innerHTML = '<h3>整理预览</h3><p class="m-desc">将按以下分组创建文件夹，点击可跳过某组：</p>' +
+      '<ul class="folder-preview" id="fpList">' + groups.map(g => {
+        const dot = mode==='color' ? (COLOR_HEX[g.key]||'#8e8e93') : (g.items[0].colorHex||'#8e8e93');
+        return '<li data-key="' + esc(g.key) + '" data-off="' + (g.off?'1':'0') + '">' +
+          '<span class="fp-dot" style="background:' + dot + '"></span>' +
+          '<span class="fp-name">' + esc(g.key) + '</span>' +
+          '<span class="fp-cnt">' + g.items.length + ' 张</span>' +
+          '<span class="fp-check' + (g.off?' off':'') + '">' + CHECK_SVG + '</span></li>';
+      }).join('') + '</ul>' +
+      '<div class="m-actions"><button class="m-cancel" data-close>取消</button><button class="m-ok" id="applyOrg">创建文件夹并整理</button></div>';
+    openModal();
+    const lis = box.querySelectorAll('#fpList li');
+    lis.forEach(li => {
+      li.onclick = () => {
+        const off = li.dataset.off === '1';
+        li.dataset.off = off ? '0' : '1';
+        li.classList.toggle('off', !off);
+        li.querySelector('.fp-check').classList.toggle('off', !off);
+      };
+    });
+    $('#applyOrg').onclick = async () => {
+      let created = 0, moved = 0;
+      for (const li of lis){
+        if (li.dataset.off === '1') continue;
+        const key = li.dataset.key;
+        const f = { id: uid(), name: uniqueName(key, state.folders), createdAt: Date.now() };
+        state.folders.push(f);
+        await dbPut(S_FOLDERS, f);
+        created++;
+        const group = groups.find(g => g.key === key);
+        for (const m of group.items){
+          m.folderId = f.id;
+          await dbPut(S_META, m);
+          moved++;
+        }
+      }
+      closeModal();
+      renderAll();
+      toast('已创建 ' + created + ' 个文件夹，整理 ' + moved + ' 张照片');
+    };
+  }
+  renderStep1();
+  openModal();
+}
+
+/* 智能相簿补全分析 */
+function reanalyzeSmart(){
+  const mode = state.view.smart;
+  const names = { color:'颜色', region:'地域', subject:'题材' };
+  const box = $('#modalBox');
+  abortAnalyze = false;
+  box.innerHTML = '<h3>重新分析</h3>' +
+    '<div class="prog"><div class="p-row"><span id="pText">正在分析…</span><span id="pCnt">0 / 0</span></div><div class="p-bar"><div class="p-fill" id="pFill"></div></div></div>' +
+    '<div class="m-actions"><button class="m-cancel" id="orgCancel">取消</button></div>';
+  openModal();
+  $('#orgCancel').onclick = () => { abortAnalyze = true; };
+  (async () => {
+    const res = await analyzeFor(mode, (pct, done, total) => {
+      $('#pFill').style.width = pct + '%';
+      $('#pCnt').textContent = done + ' / ' + total;
+    });
+    if (abortAnalyze){ closeModal(); return; }
+    closeModal();
+    if (res.error){ toast(res.error, 'err'); return; }
+    renderAll();
+    toast('已补全' + names[mode] + '分析');
+  })();
+}
+
+/* =====================================================================
+   灯箱
+===================================================================== */
+let lbUrl = null;
+function lbList(){ return viewPhotos().map(m => m.id); }
+
+async function openLightbox(id){
+  const m = state.meta.find(x => x.id === id);
+  if (!m) return;
+  state.lb = id;
+  $('#lightbox').classList.add('show');
+  const rec = await dbGet(S_BLOBS, id + ':f');
+  if (state.lb !== id) return; // 快速切换时防止串图
+  if (lbUrl) URL.revokeObjectURL(lbUrl);
+  lbUrl = URL.createObjectURL(rec.blob);
+  $('#lbImg').src = lbUrl;
+  $('#lbName').textContent = m.name;
+  const tags = [];
+  tags.push('<span class="lb-tag"><span class="t-dot" style="background:' + m.colorHex + '"></span>' + esc(m.colorName) + '</span>');
+  if (m.region) tags.push('<span class="lb-tag">' + esc(m.region) + '</span>');
+  if (m.subjectZh) tags.push('<span class="lb-tag">' + esc(m.subjectZh) + '</span>');
+  if (m.width && m.height) tags.push('<span class="lb-tag">' + m.width + ' × ' + m.height + '</span>');
+  tags.push('<span class="lb-tag">' + fmtDate(m.addedAt) + '</span>');
+  $('#lbTags').innerHTML = tags.join('');
+  const list = lbList(), i = list.indexOf(id);
+  $('#lbPrev').style.visibility = i > 0 ? 'visible' : 'hidden';
+  $('#lbNext').style.visibility = (i >= 0 && i < list.length - 1) ? 'visible' : 'hidden';
+}
+function lbNav(dir){
+  const list = lbList();
+  const i = list.indexOf(state.lb);
+  const j = i + dir;
+  if (j >= 0 && j < list.length) openLightbox(list[j]);
+}
+function closeLightbox(){
+  $('#lightbox').classList.remove('show');
+  if (lbUrl) URL.revokeObjectURL(lbUrl);
+  lbUrl = null;
+  state.lb = null;
+}
+
+/* =====================================================================
+   事件绑定
+===================================================================== */
+let dragPhotoId = null;
+let dragDepth = 0;
+
+function closeSidebar(){ $('#sidebar').classList.remove('open'); }
+
+function confirmDelete(ids, then){
+  const box = $('#modalBox');
+  box.innerHTML = '<h3>删除 ' + ids.length + ' 张照片？</h3>' +
+    '<p class="m-desc">删除后无法恢复，请确认这些照片不再需要。</p>' +
+    '<div class="m-actions"><button class="m-cancel" data-close>取消</button><button class="m-ok m-danger" id="delOk">删除</button></div>';
+  openModal();
+  $('#delOk').onclick = () => { closeModal(); deletePhotos(ids).then(then || (()=>{})); };
+}
+
+function bindEvents(){
+  // 侧边栏导航（智能相簿）
+  $$('.side-item[data-view]').forEach(el => {
+    el.addEventListener('click', () => {
+      state.view = { type: el.dataset.view, folderId: null, smart: el.dataset.smart || null, group: null, q: '' };
+      $('#searchInput').value = '';
+      renderAll();
+      closeSidebar();
+    });
+  });
+  // 文件夹列表：打开 / 重命名 / 删除
+  $('#folderList').addEventListener('click', e => {
+    const item = e.target.closest('.folder-item');
+    if (!item) return;
+    const fid = item.dataset.fid;
+    if (e.target.closest('.f-rename')){
+      const f = state.folders.find(x => x.id === fid);
+      askName('重命名文件夹', '给文件夹起个新名字，照片会自动跟随。', f ? f.name : '', v => renameFolder(fid, v));
+      return;
+    }
+    if (e.target.closest('.f-del')){ deleteFolder(fid); return; }
+    state.view = { type:'folder', folderId: fid, smart:null, group:null, q:'' };
+    $('#searchInput').value = '';
+    renderAll();
+    closeSidebar();
+  });
+  // 文件夹拖放目标
+  $('#folderList').addEventListener('dragover', e => {
+    const item = e.target.closest('.folder-item');
+    if (!item || !dragPhotoId) return;
+    e.preventDefault();
+    item.classList.add('folder-drag');
+  });
+  $('#folderList').addEventListener('dragleave', e => {
+    const item = e.target.closest('.folder-item');
+    if (item) item.classList.remove('folder-drag');
+  });
+  $('#folderList').addEventListener('drop', e => {
+    const item = e.target.closest('.folder-item');
+    e.preventDefault();
+    if (item && dragPhotoId){
+      item.classList.remove('folder-drag');
+      movePhotos([dragPhotoId], item.dataset.fid);
+    }
+    dragPhotoId = null;
+  });
+
+  // 新建文件夹
+  $('#btnNewFolder').addEventListener('click', () => askName('新建文件夹', '给这个分类起个名字，比如「旅行」「宝宝」「2024 夏天」。', '', createFolder));
+
+  // 上传
+  const openPicker = () => $('#fileInput').click();
+  $('#btnUpload').addEventListener('click', openPicker);
+  $('#emptyUpload').addEventListener('click', openPicker);
+  $('#fileInput').addEventListener('change', e => {
+    handleFiles(e.target.files);
+    e.target.value = '';
+  });
+
+  // 智能整理
+  $('#btnOrganize').addEventListener('click', openOrganize);
+
+  // 搜索
+  $('#searchInput').addEventListener('input', e => {
+    state.view.q = e.target.value;
+    $('#searchClear').style.display = e.target.value ? 'flex' : 'none';
+    renderGrid();
+    renderTopbar();
+  });
+  $('#searchClear').addEventListener('click', () => {
+    $('#searchInput').value = '';
+    state.view.q = '';
+    $('#searchClear').style.display = 'none';
+    renderGrid();
+    renderTopbar();
+  });
+
+  // 照片卡片
+  $('#grid').addEventListener('click', e => {
+    const card = e.target.closest('.photo-card');
+    if (!card) return;
+    const id = card.dataset.id;
+    if (e.target.closest('.pc-check')){
+      if (e.shiftKey && state.lastSelId){
+        const list = viewPhotos().map(m => m.id);
+        const a = list.indexOf(state.lastSelId), b = list.indexOf(id);
+        if (a >= 0 && b >= 0){
+          const lo = Math.min(a,b), hi = Math.max(a,b);
+          for (let i = lo; i <= hi; i++) state.selected.add(list[i]);
+          renderGrid(); renderSelBar();
+          return;
+        }
+      }
+      state.lastSelId = id;
+      selectPhoto(id, state.selected.size > 0);
+      return;
+    }
+    openLightbox(id);
+  });
+  // 拖拽照片
+  $('#grid').addEventListener('dragstart', e => {
+    const card = e.target.closest('.photo-card');
+    if (!card) return;
+    dragPhotoId = card.dataset.id;
+    e.dataTransfer.effectAllowed = 'move';
+    card.classList.add('dragging');
+  });
+  $('#grid').addEventListener('dragend', e => {
+    const card = e.target.closest('.photo-card');
+    if (card) card.classList.remove('dragging');
+    dragPhotoId = null;
+  });
+
+  // 选择工具栏
+  $('#selMove').addEventListener('click', () => openMoveDialog([...state.selected]));
+  $('#selDownload').addEventListener('click', () => {
+    [...state.selected].forEach(downloadPhoto);
+    toast('开始下载 ' + state.selected.size + ' 张照片');
+  });
+  $('#selDelete').addEventListener('click', () => confirmDelete([...state.selected]));
+  $('#selClear').addEventListener('click', () => { state.selected.clear(); renderAll(); });
+
+  // 灯箱
+  $('#lbClose').addEventListener('click', closeLightbox);
+  $('#lbPrev').addEventListener('click', () => lbNav(-1));
+  $('#lbNext').addEventListener('click', () => lbNav(1));
+  $('#lightbox').addEventListener('click', e => { if (e.target === $('#lightbox')) closeLightbox(); });
+  $('#lbMove').addEventListener('click', () => { if (state.lb) openMoveDialog([state.lb]); });
+  $('#lbDownload').addEventListener('click', () => { if (state.lb) downloadPhoto(state.lb); });
+  $('#lbDelete').addEventListener('click', () => { if (state.lb) confirmDelete([state.lb], closeLightbox); });
+
+  // 智能相簿「重新分析」
+  document.addEventListener('click', e => {
+    const r = e.target.closest('#btnReanalyze');
+    if (r) reanalyzeSmart();
+  });
+
+  // 键盘
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape'){
+      if ($('#modalRoot').classList.contains('show')) closeModal();
+      else closeLightbox();
+    }
+    if ($('#lightbox').classList.contains('show') && e.target.tagName !== 'INPUT'){
+      if (e.key === 'ArrowLeft') lbNav(-1);
+      if (e.key === 'ArrowRight') lbNav(1);
+    }
+  });
+
+  // 移动端侧栏
+  $('#hamburger').addEventListener('click', () => $('#sidebar').classList.toggle('open'));
+
+  // 拖拽上传
+  window.addEventListener('dragenter', e => {
+    if (e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files')){
+      dragDepth++;
+      $('#dropOverlay').classList.add('show');
+    }
+  });
+  window.addEventListener('dragleave', () => {
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (!dragDepth) $('#dropOverlay').classList.remove('show');
+  });
+  window.addEventListener('dragover', e => {
+    if (e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files')) e.preventDefault();
+  });
+  window.addEventListener('drop', e => {
+    if (e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files')){
+      e.preventDefault();
+      dragDepth = 0;
+      $('#dropOverlay').classList.remove('show');
+      handleFiles(e.dataTransfer.files);
+    }
+  });
+}
+
+/* =====================================================================
+   初始化
+===================================================================== */
+(async function init(){
+  try{
+    _db = await openDB();
+  }catch(e){
+    toast('浏览器不支持 IndexedDB，无法保存照片', 'err');
+    return;
+  }
+  state.meta = await dbAll(S_META);
+  state.folders = await dbAll(S_FOLDERS);
+  const thumbs = await dbAllKind('thumb');
+  for (const t of thumbs) state.thumbs.set(t.photoId, URL.createObjectURL(t.blob));
+  bindEvents();
+  renderAll();
+})();
+</script>
+</body>
+</html>
