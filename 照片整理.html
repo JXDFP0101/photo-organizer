@@ -2373,14 +2373,36 @@ async function fetchSettingsFromServer(cfgs){
   }
   return null;
 }
+function isLocalServerPage(){
+  return (location.protocol === 'http:' || location.protocol === 'https:') && location.origin.indexOf('github.io') < 0;
+}
 async function pushServerSettings(){
-  const cfgs = state.netCfgs.filter(c => c.enabled);
-  if (!cfgs.length) return;
   const payload = { netCfgs: state.netCfgs, colls: state.colls, savedAt: Date.now() };
   const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
-  for (const c of cfgs){
+  // 1) 页面自己的服务器（局域网暂存站页面：无需任何配置即可读写记忆文件）
+  if (isLocalServerPage()){
+    try{
+      await fetch(location.origin + '/' + _SETTINGS_FILE, {
+        method: 'PUT', body: blob,
+        headers: { 'Authorization': 'Basic ' + btoa(':') }
+      });
+    }catch(e){}
+  }
+  // 2) 所有启用的网络配置（NAS / 其他暂存站）
+  for (const c of state.netCfgs.filter(x => x.enabled)){
     try{ await dav(c, 'PUT', _SETTINGS_FILE, blob); }catch(e){}
   }
+}
+async function fetchLocalServerSettings(){
+  if (!isLocalServerPage()) return null;
+  try{
+    const res = await fetch(location.origin + '/' + _SETTINGS_FILE, {
+      method: 'GET',
+      headers: { 'Authorization': 'Basic ' + btoa(':') }
+    });
+    if (res.status === 200) return await res.json();
+  }catch(e){}
+  return null;
 }
 async function loadNetCfgs(){
   const r = await dbGet(S_SYNC, 'netcfgs');
@@ -2395,9 +2417,14 @@ async function loadNetCfgs(){
     if (list.length) await saveNetCfgs(list);
   }
   // 记忆文档：配置与题材保存在服务器（D:\\相册管理\\相册设置.json），更新后自动读回
+  // 优先读"页面自己的服务器"（不依赖本地配置，任何入口都能找回），再读已配置的服务器
   try{
-    const s = await fetchSettingsFromServer(list);
-    if (s){
+    let s = null;
+    try{ s = await fetchLocalServerSettings(); }catch(e){}
+    if (!s || (!s.netCfgs && !s.colls)){
+      try{ s = await fetchSettingsFromServer(list); }catch(e){}
+    }
+    if (s && (s.netCfgs || s.colls)){
       let changed = false;
       if (Array.isArray(s.netCfgs) && s.netCfgs.length){
         list = s.netCfgs;
