@@ -2457,7 +2457,7 @@ async function syncOnce(cfg, label){
     // 确保云端目录存在（群晖 WebDAV 需要父目录）
     try{ await dav(cfg, 'MKCOL', _CLOUD_DIR); }catch(e){}
     // 1. 读取云端清单
-    let manifest = await davGetJson(cfg, _CLOUD_DIR + '/manifest.json');
+    let manifest = await davGetJson(cfg, 'manifest.json');
     if (!manifest || !manifest.photos) manifest = { photos: {} };
     const cloudMap = manifest.photos;
     // 2. 删除同步：本地删过的照片，云端一并删除
@@ -2513,7 +2513,7 @@ async function syncOnce(cfg, label){
       }
     }
     // 5. 写回清单
-    const mres = await dav(cfg, 'PUT', _CLOUD_DIR + '/manifest.json',
+    const mres = await dav(cfg, 'PUT', 'manifest.json',
       new Blob([JSON.stringify({ photos: cloudMap, updatedAt: Date.now() })], { type: 'application/json' }));
     if (!mres.ok) throw new Error('清单写入失败（' + mres.status + '）');
     if (tbs.length) await saveTombstones([]);
