@@ -2834,15 +2834,15 @@ async function detectLan(){
   try{
     const ctl = new AbortController();
     const t = setTimeout(() => ctl.abort(), 2500);
-    const res = await fetch('https://mintmilk.local:8091/相册设置.json', { signal: ctl.signal, cache: 'no-store' });
+    const res = await fetch('http://mintmilk.local:8090/相册设置.json', { signal: ctl.signal, cache: 'no-store' });
     clearTimeout(t);
     return true;
   }catch(e){ return false; }
 }
 function openLanDialog(){
   const box = $('#modalBox');
-  box.innerHTML = '<h3>暂存站不在同一局域网</h3>' +
-    '<p class="m-desc">当前设备与暂存站（电脑 / NAS）不在同一个局域网，无法使用完整功能。请让本设备连接到暂存站所在的网络后再使用局域网功能。</p>' +
+  box.innerHTML = '<h3>当前是线上浏览模式</h3>' +
+    '<p class="m-desc">照片、配置和同步都保存在家中暂存站。需要完整功能时，请让本设备与暂存站处于同一局域网，并打开<br><br><b>http://mintmilk.local:8090</b><br><br>（局域网入口，无需任何证书或设置）。</p>' +
     '<div class="m-actions"><button class="m-ok" data-close>知道了</button></div>';
   openModal();
 }
@@ -2933,7 +2933,7 @@ async function loadNetCfgs(){
       }else{
         // 新设备 / 线上入口：从统一入口暂存站自动发现配置（手机装证书后在同一局域网即可读回）
         try{
-          const res = await fetch('https://mintmilk.local:8091/相册设置.json', { cache: 'no-store' });
+          const res = await fetch('http://mintmilk.local:8090/相册设置.json', { cache: 'no-store' });
           if (res.status === 200) s = await res.json();
         }catch(e){}
       }
@@ -2965,16 +2965,16 @@ async function loadNetCfgs(){
       pushServerSettings();
     }
   }catch(e){}
-  // 统一入口：暂存站一律走 HTTPS（线上 https 页面访问局域网 https 不会被混合内容拦截）
+  // 统一入口：全部以 http://mintmilk.local:8090 为核心（局域网全功能，线上仅浏览）
   for (const c of list){
     const u = c.server || c.url || '';
-    if (/^https?:\/\/mintmilk\.local:8090/.test(u)){
-      const nu = u.replace(/^http:\/\//, 'https://').replace(':8090', ':8091');
+    if (/^https?:\/\/mintmilk\.local:8091/.test(u)){
+      const nu = u.replace(/^https:\/\//, 'http://').replace(':8091', ':8090');
       if (c.server) c.server = nu; else if (c.url) c.url = nu;
     }
     // NAS 同步经电脑暂存站代理：群晖 WebDAV 无 CORS 头，浏览器直连会被拦截
     if (c.type === 'nas' && c.server && c.server.indexOf('/nas/') < 0){
-      c.server = 'https://mintmilk.local:8091/nas/';
+      c.server = 'http://mintmilk.local:8090/nas/';
     }
   }
   return list;
@@ -3051,7 +3051,7 @@ async function netRender(){
       : (online ? '线上浏览版' : (location.origin || '本机'));
     if (!state.netCfgs.length){
       el.textContent = online
-        ? '线上浏览模式：完整功能需要与暂存站（电脑 / NAS）处于同一局域网；不在同一网络时点「立即同步」会提示。'
+        ? '线上浏览模式：完整功能请在局域网打开 http://mintmilk.local:8090'
         : '当前入口：' + src + ' · 未配置，点「添加配置」添加。';
     }
     else el.textContent = '当前入口：' + src + ' · 已配置 ' + state.netCfgs.length + ' 个 · 启用 ' + enabled + ' 个';
