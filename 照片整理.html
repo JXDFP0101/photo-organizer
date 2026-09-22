@@ -73,6 +73,9 @@ input{font-family:inherit;font-size:inherit}
 .side-brand .logo svg{width:18px;height:18px}
 .side-brand b{font-size:15px;font-weight:600;letter-spacing:.2px}
 .side-brand small{display:block;font-size:11px;color:var(--text-3);font-weight:400;margin-top:1px}
+#sideClose{display:none;margin-left:auto;width:32px;height:32px;border-radius:9px;align-items:center;justify-content:center;color:var(--text-2);flex-shrink:0;transition:.15s}
+#sideClose:hover{background:rgba(0,0,0,.06);color:var(--text)}
+#sideClose svg{width:16px;height:16px}
 
 .side-sec{margin-top:6px}
 .side-sec-h{display:flex;align-items:center;justify-content:space-between;padding:10px 10px 6px}
@@ -385,6 +388,7 @@ input{font-family:inherit;font-size:inherit}
   #sidebar{position:fixed;left:0;top:0;bottom:0;transform:translateX(-100%);box-shadow:var(--shadow)}
   #sidebar.open{transform:translateX(0)}
   #hamburger{display:flex}
+  #sideClose{display:flex}
   #main{width:100%}
   #content{padding:16px 14px 80px}
   #grid,.grid-sec{grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:9px}
@@ -420,6 +424,9 @@ input{font-family:inherit;font-size:inherit}
         <b>相册整理</b>
         <small>Photo Organizer</small>
       </div>
+      <button id="sideClose" title="关闭菜单">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
     </div>
 
     <div class="side-sec">
@@ -1719,6 +1726,8 @@ function bindEvents(){
 
   // 移动端侧栏
   $('#hamburger').addEventListener('click', () => $('#sidebar').classList.toggle('open'));
+  $('#sideClose').addEventListener('click', closeSidebar);
+  $('#main').addEventListener('click', () => { if ($('#sidebar').classList.contains('open')) closeSidebar(); });
 
   // 拖拽上传
   window.addEventListener('dragenter', e => {
