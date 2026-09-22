@@ -1590,6 +1590,25 @@ async function moveToSub(ids, sub){
   toast(sub ? '已移入子目录「' + sub + '」' : '已移入「未分类」');
 }
 
+async function movePhotosToSubDir(ids, cid, sub){
+  const c = state.colls.find(x => x.id === cid);
+  if (c && sub && !c.subs.includes(sub)){
+    c.subs.push(sub);
+    await dbPut(S_COLLS, c);
+  }
+  for (const id of ids){
+    const m = state.meta.find(x => x.id === id);
+    if (!m) continue;
+    m.collection = cid;
+    m.sub = sub || undefined;
+    await dbPut(S_META, m);
+  }
+  state.selected.clear();
+  renderAll();
+  pushServerSettings();
+  toast(sub ? '已归入「' + (c ? c.name : '') + ' / ' + sub + '」' : '已归入「' + (c ? c.name : '') + ' / 未分类」');
+}
+
 function openSubManage(c){
   const box = $('#modalBox');
   const subs = c.subs || [];
@@ -2019,11 +2038,14 @@ function openMoveDialog(ids){
   const folderLis = state.folders.map(f =>
     '<li data-fid="' + f.id + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>' + esc(f.name) + '</li>').join('');
   const extra = folderLis ? '<li class="custom-h">自定义</li>' + folderLis : '';
-  const curColl = state.colls.find(x => x.id === state.collection);
-  const subs = (curColl && curColl.subs) || [];
-  const subLis = subs.map(s => '<li data-sub="' + esc(s) + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>' + esc(s) + '</li>').join('');
-  const subExtra = (curColl && subLis) ? '<li class="custom-h">子目录（' + esc(curColl.name) + '）</li>' + subLis + '<li data-sub="">未分类</li>' : '';
-  box.innerHTML = '<h3>归入</h3><p class="m-desc">将 ' + ids.length + ' 张照片归入色系（自动重新分类后的照片会跟随分析结果）：</p>' +
+  // 全部题材的子目录（跨题材归入，只改归属路径，不复制文件，去重保持）
+  const subExtra = state.colls.map(c => {
+    const csubs = c.subs || [];
+    let items = '<li data-mc="' + c.id + '" data-msub=""><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M7 12h10"/></svg>未分类</li>';
+    items += csubs.map(s => '<li data-mc="' + c.id + '" data-msub="' + esc(s) + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>' + esc(s) + '</li>').join('');
+    return '<li class="custom-h">' + esc(c.name) + ' 子目录</li>' + items;
+  }).join('');
+  box.innerHTML = '<h3>归入</h3><p class="m-desc">将 ' + ids.length + ' 张照片归入色系（自动重新分类后的照片会跟随分析结果），或归入任意题材的子目录：</p>' +
     '<ul class="move-list">' + colorLis + extra + subExtra + '</ul>' +
     '<div class="m-actions"><button class="m-cancel" data-close>取消</button></div>';
   openModal();
@@ -2031,6 +2053,7 @@ function openMoveDialog(ids){
     li.onclick = () => {
       closeModal();
       if (li.dataset.color) moveToColor(ids, li.dataset.color);
+      else if (li.hasAttribute('data-mc')) movePhotosToSubDir(ids, li.dataset.mc, li.dataset.msub || undefined);
       else if (li.hasAttribute('data-sub')) moveToSub(ids, li.dataset.sub);
       else if (li.dataset.fid) movePhotos(ids, li.dataset.fid);
     };
