@@ -2821,6 +2821,10 @@ async function importBackup(file){
    云同步：LeanCloud 多设备同步
 ===================================================================== */
 const _CLOUD_DIR = '美化成品';
+const _WM_DIR = '美化成品+水印';
+const _WM_SUB = '油画';
+function wmCollId(){ const cc = state.colls.find(x => x.name === '水印'); return cc ? cc.id : null; }
+function isWmOil(m){ const cid = wmCollId(); return !!(cid && m.collection === cid && (m.sub || '') === _WM_SUB); }
 const _SETTINGS_FILE = '相册设置.json';
 let _cloudSyncBusy = false, _cloudAutoTimer = null, _cloudFailStreak = 0;
 
@@ -3059,10 +3063,14 @@ async function netRender(){
   renderNetList();
 }
 
-async function applyDownloaded(cloudId, c, blob){
+async function applyDownloaded(cloudId, c, blob, opts){
   const src = c.m || {};
   const nid = uid();
   const nm = Object.assign({}, src, { id: nid, hash: c.hash || null, addedAt: c.pt || Date.now() });
+  if (opts){
+    if (opts.collection) nm.collection = opts.collection;
+    if (opts.sub !== undefined) nm.sub = opts.sub;
+  }
   const thumb = await makeThumbFromBlob(blob);
   let col = nm.collection || 'default';
   if (col !== 'default' && !state.colls.some(c => c.id === col)){
@@ -3125,8 +3133,17 @@ async function syncOnce(cfg, label, onProg){
     for (const m of state.meta){
       upIdx++;
       if (onProg) onProg(Math.round(upIdx / Math.max(1, upTotal) * 55), '上传 ' + upIdx + '/' + upTotal + ' · ' + (m.name || '照片'));
-      // 跨设备去重：云端已有相同内容的照片则跳过上传
-      if (m.hash && Object.values(cloudMap).some(x => x.hash && x.hash === m.hash)) continue;
+      // 跨设备去重：云端已有相同内容的照片则跳过上传（有 hash 按 hash，无 hash 按 大小+扩展名）
+      {
+        const cloudArr = Object.values(cloudMap);
+        if (m.hash){
+          if (cloudArr.some(x => x.hash && x.hash === m.hash)) continue;
+        }else{
+          const ext0 = ((m.name && m.name.match(/\.\w+$/)) || ['.jpg'])[0];
+          const rec0 = await dbGet(S_BLOBS, m.id + ':f');
+          if (rec0 && rec0.blob && cloudArr.some(x => !x.hash && x.size === rec0.blob.size && (x.ext || '').toLowerCase() === ext0.toLowerCase())) continue;
+        }
+      }
       const c = cloudMap[m.id];
       if (!c){
         const rec = await dbGet(S_BLOBS, m.id + ':f');
@@ -3159,8 +3176,12 @@ async function syncOnce(cfg, label, onProg){
     for (const [id, c] of Object.entries(cloudMap)){
       dnIdx++;
       if (onProg) onProg(58 + Math.round(dnIdx / Math.max(1, dnTotal) * 37), '检查云端照片 ' + dnIdx + '/' + dnTotal);
-      // 跨设备去重：本地已有相同内容的照片则跳过下载
-      if (c.hash && state.meta.some(x => x.hash && x.hash === c.hash)) continue;
+      // 跨设备去重：本地已有相同内容的照片则跳过下载（有 hash 按 hash，无 hash 按 大小+扩展名）
+      if (c.hash){
+        if (state.meta.some(x => x.hash && x.hash === c.hash)) continue;
+      }else{
+        if (state.meta.some(x => !x.hash && (x.size || 0) === (c.size || 0) && ((x.name || '').match(/\.\w+$/) || ['.jpg'])[0].toLowerCase() === (c.ext || '').toLowerCase())) continue;
+      }
       if (!state.meta.some(m => m.id === id)){
         const res = await dav(cfg, 'GET', cloudP(id + c.ext));
         if (!res.ok) continue;
@@ -3172,11 +3193,127 @@ async function syncOnce(cfg, label, onProg){
     const mres = await dav(cfg, 'PUT', cloudP('manifest.json'),
       new Blob([JSON.stringify({ photos: cloudMap, updatedAt: Date.now() })], { type: 'application/json' }));
     if (!mres.ok) throw new Error('清单写入失败（' + mres.status + '）');
-    if (tbs.length) await saveTombstones([]);
     return { up: up, dn: dn, removed: removed };
   }catch(e){
     throw e;
   }
+}
+
+async function purgeLocalPhoto(id){
+  await dbDel(S_META, id);
+  await dbDel(S_BLOBS, id + ':t');
+  await dbDel(S_BLOBS, id + ':f');
+  const u = state.thumbs.get(id);
+  if (u) URL.revokeObjectURL(u);
+  state.thumbs.delete(id);
+  state.meta = state.meta.filter(x => x.id !== id);
+  state.selected.delete(id);
+}
+
+/* 水印·油画 ↔ 电脑本地目录「美化成品+水印」强绑定强同步（同删同加）
+   只对暂存站（staging）配置执行；应用上传/删除同步到目录，同时反向扫描外部变更 */
+async function syncWmDir(cfg, onProg){
+  const cid = wmCollId();
+  if (!cid) return { up:0, dn:0, removed:0 };
+  const dir = _WM_DIR;
+  if (onProg) onProg(2, '准备目录');
+  try{ await dav(cfg, 'MKCOL', dir); }catch(e){}
+  // 1. 读目录清单
+  let wm = null;
+  try{
+    const res = await dav(cfg, 'GET', dir + '/manifest.json');
+    if (res.status === 200) wm = await res.json();
+  }catch(e){}
+  const wmMap = (wm && wm.photos) ? wm.photos : {};
+  // 2. 目录清单去重：同一内容只留一个
+  let removed = 0;
+  {
+    const seen = new Map();
+    const drop = [];
+    for (const [id, cc] of Object.entries(wmMap)){
+      const key = (cc.hash && cc.hash !== null) ? ('h:' + cc.hash) : ('s:' + (cc.size || 0) + ':' + (cc.ext || ''));
+      if (seen.has(key)) drop.push(id); else seen.set(key, id);
+    }
+    for (const id of drop){
+      const cc = wmMap[id];
+      try{ await dav(cfg, 'DELETE', dir + '/' + (cc.fname || (id + cc.ext))); }catch(e){}
+      delete wmMap[id];
+      removed++;
+    }
+  }
+  // 3. 上传：本地「水印→油画」照片同步到目录
+  let up = 0;
+  const wmArr = Object.values(wmMap);
+  let idx = 0;
+  const wmUpList = state.meta.filter(isWmOil);
+  for (const m of wmUpList){
+    idx++;
+    if (onProg) onProg(5 + Math.round(idx / Math.max(1, wmUpList.length) * 55), '上传 ' + idx + '/' + wmUpList.length);
+    if (m.hash && wmArr.some(x => x.hash && x.hash === m.hash)) continue;
+    const cc = wmMap[m.id];
+    if (!cc || cc.hash !== (m.hash || null)){
+      const rec = await dbGet(S_BLOBS, m.id + ':f');
+      if (!rec || !rec.blob) continue;
+      const ext = ((m.name && m.name.match(/\.\w+$/)) || ['.jpg'])[0];
+      const fname = m.id + ext;
+      const res = await dav(cfg, 'PUT', dir + '/' + fname, rec.blob);
+      if (!res.ok) throw new Error('水印目录上传失败（' + res.status + '）');
+      wmMap[m.id] = { m: Object.assign({}, m), hash: m.hash || null, ext: ext, fname: fname, size: rec.blob.size, pt: m.addedAt || Date.now() };
+      up++;
+    }
+  }
+  // 4. 删除：tombstone 中的「水印→油画」照片在目录一并删除
+  let del = 0;
+  const tbs = await getTombstones();
+  for (const id of tbs){
+    if (wmMap[id]){
+      const cc = wmMap[id];
+      try{ await dav(cfg, 'DELETE', dir + '/' + (cc.fname || (id + cc.ext))); }catch(e){}
+      delete wmMap[id];
+      del++;
+    }
+  }
+  // 5. 外部对账：以目录实况为准（list API 返回文件 + sha1）
+  let imp = 0, extDel = 0;
+  try{
+    const base = (cfg.server || '').replace(/\/+$/, '');
+    const res = await fetch(base + '/' + _WM_DIR + '/list', { cache: 'no-store' });
+    if (res.status === 200){
+      const j = await res.json();
+      const files = (j && j.files) || [];
+      const fmap = new Map(files.map(f => [f.name, f]));
+      // 5a. 目录清单有、实况没有 → 外部删除 → 本地照片一并删除（同删）
+      for (const id of Object.keys(wmMap)){
+        const cc = wmMap[id];
+        if (!fmap.has(cc.fname || (id + cc.ext))){
+          await purgeLocalPhoto(id);
+          delete wmMap[id];
+          extDel++;
+        }
+      }
+      // 5b. 实况有、目录清单没有 → 外部新增 → 导入到「水印→油画」（同加，hash 去重）
+      for (const f of files){
+        if (f.name === 'manifest.json') continue;
+        if (Object.values(wmMap).some(x => (x.fname || (x.id !== undefined ? '' : '')) === f.name)) continue;
+        if (f.hash && state.meta.some(x => x.hash && x.hash === f.hash)) continue;
+        const r = await dav(cfg, 'GET', dir + '/' + f.name);
+        if (!r.ok) continue;
+        const blob = await r.blob();
+        const ext = ((f.name.match(/\.\w+$/)) || ['.jpg'])[0];
+        const nid = uid();
+        const nm = { id: nid, name: f.name, addedAt: Date.now(), collection: cid, sub: _WM_SUB, hash: f.hash || null };
+        await applyDownloaded(nid, { m: nm, hash: f.hash || null, ext: ext, size: f.size, pt: Date.now() }, blob);
+        wmMap[nid] = { m: nm, hash: f.hash || null, ext: ext, fname: f.name, size: f.size, pt: Date.now() };
+        imp++;
+      }
+    }
+  }catch(e){}
+  // 6. 写回目录清单
+  if (onProg) onProg(97, '写回目录清单');
+  const mres = await dav(cfg, 'PUT', dir + '/manifest.json',
+    new Blob([JSON.stringify({ photos: wmMap, updatedAt: Date.now() })], { type: 'application/json' }));
+  if (!mres.ok) throw new Error('水印目录清单写入失败（' + mres.status + '）');
+  return { up: up, dn: 0, removed: removed + del, imp: imp, extDel: extDel };
 }
 
 /* 多网络同步：遍历所有启用的配置（暂存站 / NAS），逐个显示结果 */
@@ -3197,6 +3334,15 @@ async function cloudSync(manual){
       try{
         const r = await syncOnce(c, c.name, (p, msg) => setSyncProg(p, c.name + ' · ' + msg));
         up += r.up; dn += r.dn; removed += r.removed;
+        let wr = null;
+        if (c.type === 'staging'){
+          try{
+            wr = await syncWmDir(c, (p, msg) => setSyncProg(90 + Math.round(p * 0.08), c.name + ' · 水印目录 ' + msg));
+          }catch(e2){
+            results.push({ name: c.name + '（水印目录）', ok: false, msg: (e2 && e2.message) || '水印目录同步失败' });
+          }
+        }
+        if (wr){ up += wr.up || 0; removed += wr.removed || 0; }
         okAny = true;
         results.push({ name: c.name, ok: true, msg: '' });
         if (c.type === 'nas') _cloudFailStreak = 0;
@@ -3207,6 +3353,8 @@ async function cloudSync(manual){
       }
     }
     clearSyncProg();
+    const tbs2 = await getTombstones();
+    if (tbs2.length) await saveTombstones([]);
     renderAll();
     refreshSyncInfo();
     const parts = [];
