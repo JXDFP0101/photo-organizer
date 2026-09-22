@@ -2465,7 +2465,7 @@ async function syncOnce(cfg, label){
     let removed = 0;
     for (const id of tbs){
       if (cloudMap[id]){
-        try{ await dav(cfg, 'DELETE', _CLOUD_DIR + '/photos/' + id + cloudMap[id].ext); }catch(e){}
+        try{ await dav(cfg, 'DELETE', _CLOUD_DIR + '/' + id + cloudMap[id].ext); }catch(e){}
         delete cloudMap[id];
         removed++;
       }
@@ -2480,7 +2480,7 @@ async function syncOnce(cfg, label){
         const rec = await dbGet(S_BLOBS, m.id + ':f');
         if (!rec || !rec.blob) continue;
         const ext = ((m.name && m.name.match(/\.\w+$/)) || ['.jpg'])[0];
-        const res = await dav(cfg, 'PUT', _CLOUD_DIR + '/photos/' + m.id + ext, rec.blob);
+        const res = await dav(cfg, 'PUT', _CLOUD_DIR + '/' + m.id + ext, rec.blob);
         if (!res.ok) throw new Error('上传失败（' + res.status + '）');
         cloudMap[m.id] = { m: Object.assign({}, m), hash: m.hash || null, ext: ext, size: rec.blob.size, pt: m.addedAt || Date.now() };
         up++;
@@ -2488,14 +2488,14 @@ async function syncOnce(cfg, label){
         if ((m.addedAt || 0) >= (c.pt || 0)){
           const rec = await dbGet(S_BLOBS, m.id + ':f');
           if (rec && rec.blob){
-            const res = await dav(cfg, 'PUT', _CLOUD_DIR + '/photos/' + m.id + c.ext, rec.blob);
+            const res = await dav(cfg, 'PUT', _CLOUD_DIR + '/' + m.id + c.ext, rec.blob);
             if (!res.ok) throw new Error('上传失败（' + res.status + '）');
             cloudMap[m.id] = { m: Object.assign({}, m), hash: m.hash || null, ext: c.ext, size: rec.blob.size, pt: m.addedAt || Date.now() };
             up++;
           }
         }else{
           // 云端更新：下载覆盖本地
-          const res = await dav(cfg, 'GET', _CLOUD_DIR + '/photos/' + m.id + c.ext);
+          const res = await dav(cfg, 'GET', _CLOUD_DIR + '/' + m.id + c.ext);
           if (res.ok) await applyDownloaded(m.id, c, await res.blob());
         }
       }
@@ -2506,7 +2506,7 @@ async function syncOnce(cfg, label){
       // 跨设备去重：本地已有相同内容的照片则跳过下载
       if (c.hash && state.meta.some(x => x.hash && x.hash === c.hash)) continue;
       if (!state.meta.some(m => m.id === id)){
-        const res = await dav(cfg, 'GET', _CLOUD_DIR + '/photos/' + id + c.ext);
+        const res = await dav(cfg, 'GET', _CLOUD_DIR + '/' + id + c.ext);
         if (!res.ok) continue;
         await applyDownloaded(id, c, await res.blob());
         dn++;
