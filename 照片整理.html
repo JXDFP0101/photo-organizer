@@ -536,17 +536,17 @@ input{font-family:inherit;font-size:inherit}
       </div>
       <div class="side-item" data-view="smart" data-smart="color" id="navColor">
         <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 1 0 9 9c0-1.5-.8-2.5-2-2.5h-2.2c-.9 0-1.5-.6-1.5-1.4 0-.4.2-.8.5-1.1.4-.4.6-.8.6-1.3 0-1-.8-1.7-1.9-1.7h-1.4C11 4.3 9 3.4 7.6 4.1"/><circle cx="7.5" cy="11" r="1.1"/><circle cx="11" cy="8" r="1.1"/><circle cx="15.5" cy="11.5" r="1.1"/><circle cx="10" cy="14.5" r="1.1"/></svg></span>
-        <span>按颜色</span>
+        <span>颜色</span>
         <span class="cnt" id="navColorCnt"></span>
       </div>
       <div class="side-item" data-view="smart" data-smart="region" id="navRegion">
         <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-5.5 7-11a7 7 0 1 0-14 0c0 5.5 7 11 7 11z"/><circle cx="12" cy="10" r="2.6"/></svg></span>
-        <span>按地域</span>
+        <span>地域</span>
         <span class="cnt" id="navRegionCnt"></span>
       </div>
       <div class="side-item" data-view="time" id="navTime">
         <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/><circle cx="12" cy="15.5" r="2.2"/><path d="M12 13.5v2l1.5 1"/></svg></span>
-        <span>按时间</span>
+        <span>时间</span>
         <span class="cnt" id="navTimeCnt"></span>
       </div>
     </div>
@@ -1109,12 +1109,12 @@ function viewTitleText(){
     return f ? f.name : '全部照片';
   }
   if (t.type === 'smart'){
-    if (t.smart === 'color') return '按颜色';
-    return '按地域';
+    if (t.smart === 'color') return '颜色';
+    return '地域';
   }
   if (t.type === 'time'){
     if (t.year != null) return t.year + ' 年' + (t.month != null ? ' ' + t.month + ' 月' : '');
-    return '按时间';
+    return '时间';
   }
   return '全部照片';
 }
@@ -1870,7 +1870,7 @@ function openOrganize(){
   function renderStep1(){
     box.innerHTML = '<h3>智能整理</h3><p class="m-desc">选择一种整理方式，我会分析全部照片，并自动生成同名文件夹把照片归位。你也可以随时在智能相簿里先看看分组效果。</p>' +
       '<div class="seg">' + ['color','region'].map(k =>
-        '<button data-mode="' + k + '" class="' + (k===mode?'on':'') + '">' + segSVG[k] + '<span>' + (k==='color'?'按颜色':'按地域') + '</span></button>').join('') + '</div>' +
+        '<button data-mode="' + k + '" class="' + (k===mode?'on':'') + '">' + segSVG[k] + '<span>' + (k==='color'?'颜色':'地域') + '</span></button>').join('') + '</div>' +
       '<div class="seg-desc" id="segDesc">' + descs[mode] + '</div>' +
       '<div class="m-actions"><button class="m-cancel" data-close>取消</button><button class="m-ok" id="startOrg">开始整理</button></div>';
     box.querySelectorAll('.seg button').forEach(b => {
