@@ -2122,7 +2122,7 @@ async function importBackup(file){
    云同步：LeanCloud 多设备同步
 ===================================================================== */
 const _CLOUD_DIR = 'photo-organizer';
-let _cloudSyncBusy = false, _cloudAutoTimer = null;
+let _cloudSyncBusy = false, _cloudAutoTimer = null, _cloudFailStreak = 0;
 
 async function getCloudCfg(){
   const r = await dbGet(S_SYNC, 'cloud');
@@ -2255,11 +2255,30 @@ async function cloudSync(manual){
     refreshSyncInfo();
     setCloudStatus('已同步 · 上传 ' + up + ' / 下载 ' + dn + (removed ? ' / 清理 ' + removed : ''), 'ok');
     if (manual) toast('云同步完成：上传 ' + up + '，下载 ' + dn);
+    _cloudFailStreak = 0;
+    return true;
   }catch(e){
     setCloudStatus('同步失败：' + ((e && e.message) || e), 'err');
     if (manual) toast('云同步失败，请检查网络和配置', 'err');
+    return false;
   }finally{
     _cloudSyncBusy = false;
+  }
+}
+
+/* 周期自动同步：每 60 秒静默检查，能连上就自动补同步；连续失败 5 次暂停，等手动重试 */
+async function cloudAutoTick(){
+  if (_cloudSyncBusy || !state.cloudCfg) return;
+  if (_cloudFailStreak >= 5){
+    if (_cloudFailStreak === 5){
+      _cloudFailStreak = 6;
+      setCloudStatus('自动同步已暂停（多次连接失败），点「立即同步」重试', 'err');
+    }
+    return;
+  }
+  const ok = await cloudSync(false);
+  if (!ok && _cloudFailStreak >= 5){
+    setCloudStatus('自动同步已暂停（多次连接失败），点「立即同步」重试', 'err');
   }
 }
 
@@ -2321,6 +2340,7 @@ if ('serviceWorker' in navigator && location.protocol === 'https:'){
   state.cloudCfg = await getCloudCfg();
   await cloudRender();
   if (state.cloudCfg) setTimeout(() => cloudSync(false), 1500);
+  setInterval(() => cloudAutoTick(), 60000);
 })();
 </script>
 </body>
