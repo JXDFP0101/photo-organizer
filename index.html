@@ -94,11 +94,6 @@ input{font-family:inherit;font-size:inherit}
 #subBar .sub-chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
 #subBar .sub-chip .sc-cnt{font-size:11px;opacity:.65;font-weight:500}
 #subBar .sub-chip.add svg{width:13px;height:13px;stroke-width:2.2}
-#lanBanner{display:none;align-items:center;gap:10px;padding:9px 18px;background:linear-gradient(90deg,#fff7e8,#fff);border-bottom:1px solid rgba(178,80,0,.15);color:#8a4b00;font-size:13px;position:sticky;top:0;z-index:40}
-#lanBanner svg{width:16px;height:16px;flex-shrink:0}
-#lanBanner span{flex:1}
-#lanBanner button{margin-left:auto;background:var(--accent);color:#fff;border:none;border-radius:999px;padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap}
-#lanBanner button:hover{opacity:.9}
 #syncProg{padding:9px 11px;border-radius:11px;background:rgba(0,0,0,.03)}
 #syncProg .sp-bar{height:5px;border-radius:99px;background:rgba(0,0,0,.08);overflow:hidden}
 #syncProg .sp-fill{height:100%;width:0%;background:var(--accent);border-radius:99px;transition:width .25s}
@@ -641,12 +636,6 @@ input{font-family:inherit;font-size:inherit}
       </button>
       <input type="file" id="fileInput" accept="image/*" multiple hidden>
     </header>
-
-    <div id="lanBanner">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.5"/></svg>
-      <span>线上浏览模式：完整功能需要连接家中 WiFi</span>
-      <button id="btnOpenLan">打开局域网完整版</button>
-    </div>
 
     <div id="content">
       <div id="groupBar" style="display:none"></div>
@@ -2452,8 +2441,6 @@ function bindEvents(){
     e.target.value = '';
   });
   // 网络同步（暂存站 / NAS 多配置）
-  const lanGo = $('#btnOpenLan');
-  if (lanGo) lanGo.addEventListener('click', () => { location.href = 'http://mintmilk.local:8090/photo-organizer/app.html'; });
   $('#btnNetAdd').addEventListener('click', () => openNetEdit(null));
   $('#btnNetSync').addEventListener('click', () => cloudSync(true));
   $('#netList').addEventListener('click', async e => {
@@ -2855,16 +2842,9 @@ async function detectLan(){
 function openLanDialog(){
   const box = $('#modalBox');
   box.innerHTML = '<h3>未连接家中网络</h3>' +
-    '<p class="m-desc">当前是线上浏览模式，照片、配置和同步都保存在家中暂存站，暂无法连接。<br><br>请连接到家庭 WiFi 后，点击下方按钮打开局域网完整版：</p>' +
-    '<div class="m-actions"><button class="m-cancel" data-close>取消</button><button class="m-ok" id="lanGo">打开局域网完整版</button></div>';
+    '<p class="m-desc">当前是线上浏览模式，照片、配置和同步都保存在家中暂存站，暂无法连接。请连接到家庭 WiFi 后再使用局域网功能。</p>' +
+    '<div class="m-actions"><button class="m-ok" data-close>知道了</button></div>';
   openModal();
-  $('#lanGo').onclick = () => { location.href = 'http://mintmilk.local:8090/photo-organizer/app.html'; };
-}
-function renderLanBanner(){
-  const b = $('#lanBanner');
-  if (!b) return;
-  const online = location.origin.indexOf('github.io') >= 0;
-  b.style.display = (online && _lanOk === false) ? 'flex' : 'none';
 }
 
 async function fetchSettingsFromServer(cfgs){
@@ -3031,7 +3011,6 @@ async function netRender(){
     }
     else el.textContent = '当前入口：' + src + ' · 已配置 ' + state.netCfgs.length + ' 个 · 启用 ' + enabled + ' 个';
   }
-  renderLanBanner();
   renderNetList();
 }
 
