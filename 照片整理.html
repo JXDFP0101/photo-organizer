@@ -3210,6 +3210,44 @@ async function purgeLocalPhoto(id){
   state.selected.delete(id);
 }
 
+/* 本地级绝对去重：同内容只保留一条（有 hash 按 hash，无 hash 按 大小+扩展名）
+   保留策略：优先保留有指纹的、最早导入的一条；其余删除（不同步删除记录，避免误删其他端唯一副本） */
+async function localDedup(){
+  const groups = new Map();
+  const byId = new Map();
+  for (const m of state.meta) byId.set(m.id, m);
+  for (const m of state.meta){
+    let key = null;
+    if (m.hash) key = 'h:' + m.hash;
+    else if (m.size && m.name && m.name.match(/\.\w+$/)) key = 's:' + (m.size || 0) + ':' + m.name.match(/\.\w+$/)[0].toLowerCase();
+    if (!key) continue;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(m);
+  }
+  let removed = 0;
+  for (const [key, arr] of groups){
+    if (arr.length <= 1) continue;
+    arr.sort((a, b) => {
+      const ah = a.hash ? 1 : 0, bh = b.hash ? 1 : 0;
+      if (ah !== bh) return bh - ah;
+      return (a.addedAt || 0) - (b.addedAt || 0);
+    });
+    const keep = arr[0];
+    for (const m of arr.slice(1)){
+      await dbDel(S_META, m.id);
+      await dbDel(S_BLOBS, m.id + ':t');
+      await dbDel(S_BLOBS, m.id + ':f');
+      const u = state.thumbs.get(m.id);
+      if (u) URL.revokeObjectURL(u);
+      state.thumbs.delete(m.id);
+      state.selected.delete(m.id);
+      removed++;
+    }
+    state.meta = state.meta.filter(x => !arr.slice(1).some(d => d.id === x.id));
+  }
+  return removed;
+}
+
 /* 水印·油画 ↔ 电脑本地目录「美化成品+水印」强绑定强同步（同删同加）
    只对暂存站（staging）配置执行；应用上传/删除同步到目录，同时反向扫描外部变更 */
 async function syncWmDir(cfg, onProg){
@@ -3327,6 +3365,11 @@ async function cloudSync(manual){
   if (!cfgs.length){ if (manual) toast('未配置启用的网络', 'err'); return; }
   _cloudSyncBusy = true;
   let up = 0, dn = 0, removed = 0, okAny = false;
+  // 三端绝对去重第一步：先清理本端自身重复（同内容只留一条），再跨端同步
+  try{
+    const ld = await localDedup();
+    if (ld) removed += ld;
+  }catch(e){}
   const results = [];
   setSyncProg(2, '准备同步…');
   try{
