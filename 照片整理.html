@@ -3112,18 +3112,21 @@ async function syncOnce(cfg, label, onProg){
     }
     // 2.5 云端去重：同一内容的照片只保留一个（历史重复堆积清理）
     {
-      const seen = new Map();
-      const drop = [];
+      const groups = new Map();
       for (const [id, c] of Object.entries(cloudMap)){
         const key = (c.hash && c.hash !== null) ? ('h:' + c.hash)
           : ('s:' + (c.size || 0) + ':' + (c.ext || ''));
-        if (seen.has(key)) drop.push(id);
-        else seen.set(key, id);
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push([id, c]);
       }
-      for (const id of drop){
-        try{ await dav(cfg, 'DELETE', cloudP(id + cloudMap[id].ext)); }catch(e){}
-        delete cloudMap[id];
-        removed++;
+      for (const [key, arr] of groups){
+        if (arr.length <= 1) continue;
+        arr.sort((a, b) => (b[1].pt || 0) - (a[1].pt || 0));
+        for (const [id, cc] of arr.slice(1)){
+          try{ await dav(cfg, 'DELETE', cloudP(id + cc.ext)); }catch(e){}
+          delete cloudMap[id];
+          removed++;
+        }
       }
     }
     // 3. 上传：本地有而云端没有，或本地更新
@@ -3133,15 +3136,24 @@ async function syncOnce(cfg, label, onProg){
     for (const m of state.meta){
       upIdx++;
       if (onProg) onProg(Math.round(upIdx / Math.max(1, upTotal) * 55), '上传 ' + upIdx + '/' + upTotal + ' · ' + (m.name || '照片'));
-      // 跨设备去重：云端已有相同内容的照片则跳过上传（有 hash 按 hash，无 hash 按 大小+扩展名）
+      // 跨设备去重：同内容云端已存在时，保留最新版本（本地更新则覆盖云端元数据，否则跳过）
       {
-        const cloudArr = Object.values(cloudMap);
         if (m.hash){
-          if (cloudArr.some(x => x.hash && x.hash === m.hash)) continue;
+          let dupId = null, dup = null;
+          for (const [k, v] of Object.entries(cloudMap)){
+            if (v.hash && v.hash === m.hash && k !== m.id){ dupId = k; dup = v; break; }
+          }
+          if (dup){
+            if ((m.addedAt || 0) > (dup.pt || 0)){
+              cloudMap[dupId] = { m: Object.assign({}, dup.m, { name: m.name || dup.m.name, addedAt: m.addedAt || dup.m.addedAt }), hash: m.hash, ext: dup.ext, size: dup.size, pt: m.addedAt || Date.now() };
+              up++;
+            }
+            continue;
+          }
         }else{
           const ext0 = ((m.name && m.name.match(/\.\w+$/)) || ['.jpg'])[0];
           const rec0 = await dbGet(S_BLOBS, m.id + ':f');
-          if (rec0 && rec0.blob && cloudArr.some(x => !x.hash && x.size === rec0.blob.size && (x.ext || '').toLowerCase() === ext0.toLowerCase())) continue;
+          if (rec0 && rec0.blob && Object.values(cloudMap).some(x => !x.hash && x.size === rec0.blob.size && (x.ext || '').toLowerCase() === ext0.toLowerCase())) continue;
         }
       }
       const c = cloudMap[m.id];
@@ -3176,9 +3188,15 @@ async function syncOnce(cfg, label, onProg){
     for (const [id, c] of Object.entries(cloudMap)){
       dnIdx++;
       if (onProg) onProg(58 + Math.round(dnIdx / Math.max(1, dnTotal) * 37), '检查云端照片 ' + dnIdx + '/' + dnTotal);
-      // 跨设备去重：本地已有相同内容的照片则跳过下载（有 hash 按 hash，无 hash 按 大小+扩展名）
+      // 跨设备去重：本地已有同内容时保留最新版本（云端更新则同步名称，否则跳过）
       if (c.hash){
-        if (state.meta.some(x => x.hash && x.hash === c.hash)) continue;
+        const ldup = state.meta.find(x => x.hash && x.hash === c.hash && x.id !== id);
+        if (ldup){
+          if ((c.pt || 0) > (ldup.addedAt || 0)){
+            if (c.m && c.m.name){ ldup.name = c.m.name; await dbPut(S_META, ldup); }
+          }
+          continue;
+        }
       }else{
         if (state.meta.some(x => !x.hash && (x.size || 0) === (c.size || 0) && ((x.name || '').match(/\.\w+$/) || ['.jpg'])[0].toLowerCase() === (c.ext || '').toLowerCase())) continue;
       }
@@ -3230,7 +3248,7 @@ async function localDedup(){
     arr.sort((a, b) => {
       const ah = a.hash ? 1 : 0, bh = b.hash ? 1 : 0;
       if (ah !== bh) return bh - ah;
-      return (a.addedAt || 0) - (b.addedAt || 0);
+      return (b.addedAt || 0) - (a.addedAt || 0);
     });
     const keep = arr[0];
     for (const m of arr.slice(1)){
@@ -3287,7 +3305,19 @@ async function syncWmDir(cfg, onProg){
   for (const m of wmUpList){
     idx++;
     if (onProg) onProg(5 + Math.round(idx / Math.max(1, wmUpList.length) * 55), '上传 ' + idx + '/' + wmUpList.length);
-    if (m.hash && wmArr.some(x => x.hash && x.hash === m.hash)) continue;
+    if (m.hash){
+      let dupId = null, dup = null;
+      for (const [k, v] of Object.entries(wmMap)){
+        if (v.hash && v.hash === m.hash && k !== m.id){ dupId = k; dup = v; break; }
+      }
+      if (dup){
+        if ((m.addedAt || 0) > (dup.pt || 0)){
+          wmMap[dupId] = { m: Object.assign({}, dup.m, { name: m.name || dup.m.name, addedAt: m.addedAt || dup.m.addedAt }), hash: m.hash, ext: dup.ext, fname: dup.fname || dupId + dup.ext, size: dup.size, pt: m.addedAt || Date.now() };
+          up++;
+        }
+        continue;
+      }
+    }
     const cc = wmMap[m.id];
     if (!cc || cc.hash !== (m.hash || null)){
       const rec = await dbGet(S_BLOBS, m.id + ':f');
