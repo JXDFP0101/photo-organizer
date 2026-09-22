@@ -2964,6 +2964,10 @@ async function loadNetCfgs(){
       const nu = u.replace(/^http:\/\//, 'https://').replace(':8090', ':8091');
       if (c.server) c.server = nu; else if (c.url) c.url = nu;
     }
+    // NAS 同步经电脑暂存站代理：群晖 WebDAV 无 CORS 头，浏览器直连会被拦截
+    if (c.type === 'nas' && c.server && c.server.indexOf('/nas/') < 0){
+      c.server = 'https://mintmilk.local:8091/nas/';
+    }
   }
   return list;
 }
