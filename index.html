@@ -2824,10 +2824,14 @@ const _CLOUD_DIR = '美化成品';
 const _SETTINGS_FILE = '相册设置.json';
 let _cloudSyncBusy = false, _cloudAutoTimer = null, _cloudFailStreak = 0;
 
+function cfgPath(cfg, file){
+  const dir = (cfg.dir !== undefined && cfg.dir !== null && cfg.dir !== '') ? cfg.dir : '';
+  return dir ? (dir + '/' + file) : file;
+}
 async function fetchSettingsFromServer(cfgs){
   for (const c of cfgs.filter(x => x.enabled)){
     try{
-      const res = await dav(c, 'GET', _SETTINGS_FILE);
+      const res = await dav(c, 'GET', cfgPath(c, _SETTINGS_FILE));
       if (res.status === 404) continue;
       if (!res.ok) continue;
       const s = await res.json();
@@ -2853,7 +2857,7 @@ async function pushServerSettings(){
   }
   // 2) 所有启用的网络配置（NAS / 其他暂存站）
   for (const c of state.netCfgs.filter(x => x.enabled)){
-    try{ await dav(c, 'PUT', _SETTINGS_FILE, blob); }catch(e){}
+    try{ await dav(c, 'PUT', cfgPath(c, _SETTINGS_FILE), blob); }catch(e){}
   }
 }
 async function fetchLocalServerSettings(){
