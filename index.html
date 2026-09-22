@@ -536,6 +536,22 @@ input{font-family:inherit;font-size:inherit}
           </div>
         </div>
         <div class="sync-card" style="margin-top:0">
+          <div class="sync-title">局域网暂存站（电脑）</div>
+          <div class="sync-note" id="stageStatus">未配置。手机与电脑在同一 WiFi 时，照片先自动存到电脑 D 盘文件夹（原图无损）；回到 NAS 环境再自动同步到 NAS。</div>
+          <div id="stageForm" style="display:none;margin-top:8px">
+            <input class="sync-in" id="stageServer" placeholder="暂存站地址，如 http://192.168.1.8:8090/" autocomplete="off">
+            <input class="sync-in" id="stageUser" placeholder="用户名（随意，如 admin）" autocomplete="off">
+            <input class="sync-in" id="stagePass" placeholder="密码（随意）" type="password" autocomplete="off">
+            <div class="sync-btns" style="margin-top:2px">
+              <button class="sync-mini" id="btnStageSave">保存并连接</button>
+              <button class="sync-mini" id="btnStageClear">清除</button>
+            </div>
+          </div>
+          <div class="sync-btns">
+            <button id="btnStageCfg">配置</button>
+          </div>
+        </div>
+        <div class="sync-card" style="margin-top:0">
           <div class="sync-title">云同步（多设备）</div>
           <div class="sync-note" id="cloudStatus">未配置。支持群晖 NAS（WebDAV Server）、坚果云、Nextcloud 等任何 WebDAV 服务，多设备填同一组账号即可互相同步。</div>
           <div id="cloudForm" style="display:none;margin-top:8px">
@@ -733,6 +749,7 @@ const state = {
   meta: [],            // 照片元数据
   colls: [],           // 题材
   collection: 'default', // 当前题材 id
+  stageCfg: null,        // 局域网暂存站配置
   folders: [],         // 文件夹
   thumbs: new Map(),   // photoId -> objectURL（缩略图）
   view: { type:'all', folderId:null, smart:null, group:null, q:'' },
@@ -2006,6 +2023,25 @@ function bindEvents(){
     if (e.target.files && e.target.files[0]) importBackup(e.target.files[0]);
     e.target.value = '';
   });
+  // 局域网暂存站
+  $('#btnStageCfg').addEventListener('click', () => {
+    const f = $('#stageForm');
+    const show = f.style.display === 'none';
+    f.style.display = show ? 'block' : 'none';
+    if (show && state.stageCfg){
+      $('#stageServer').value = state.stageCfg.server;
+      $('#stageUser').value = state.stageCfg.user;
+      $('#stagePass').value = state.stageCfg.pass;
+    }
+  });
+  $('#btnStageSave').addEventListener('click', () => stageSaveCfg($('#stageServer').value, $('#stageUser').value, $('#stagePass').value));
+  $('#btnStageClear').addEventListener('click', async () => {
+    await saveStageCfg(null);
+    state.stageCfg = null;
+    $('#stageForm').style.display = 'none';
+    await cloudRender();
+    toast('已清除暂存站配置');
+  });
   // 云同步
   $('#btnCloudSync').addEventListener('click', () => cloudSync(true));
   $('#btnCloudCfg').addEventListener('click', () => {
@@ -2321,14 +2357,13 @@ async function getTombstones(){
 }
 async function saveTombstones(ids){ await dbPut(S_SYNC, { key: 'tombstones', ids }); }
 
-function davUrl(path){
-  const base = (state.cloudCfg.server || '').replace(/\/+$/, '');
+function davUrl(cfg, path){
+  const base = (cfg.server || '').replace(/\/+$/, '');
   return base + '/' + String(path).replace(/^\/+/, '');
 }
 
-async function dav(method, path, body){
-  const cfg = state.cloudCfg;
-  const res = await fetch(davUrl(path), {
+async function dav(cfg, method, path, body){
+  const res = await fetch(davUrl(cfg, path), {
     method: method,
     body: body || undefined,
     headers: { 'Authorization': 'Basic ' + btoa(cfg.user + ':' + cfg.pass) }
@@ -2337,8 +2372,8 @@ async function dav(method, path, body){
   return res;
 }
 
-async function davGetJson(path){
-  const res = await dav('GET', path);
+async function davGetJson(cfg, path){
+  const res = await dav(cfg, 'GET', path);
   if (res.status === 404) return null;
   if (!res.ok) throw new Error('读取清单失败（' + res.status + '）');
   try{ return await res.json(); }catch(e){ return null; }
@@ -2352,6 +2387,11 @@ function setCloudStatus(txt, kind){
 }
 
 async function cloudRender(){
+  const se = $('#stageStatus');
+  if (se){
+    if (state.stageCfg) se.textContent = '已配置 · 手机与电脑同一 WiFi 时，照片先自动同步到电脑文件夹';
+    else se.textContent = '未配置。手机与电脑在同一 WiFi 时，照片先自动存到电脑 D 盘文件夹（原图无损）；回到 NAS 环境再自动同步到 NAS。';
+  }
   if (state.cloudCfg){
     const tbs = await getTombstones();
     setCloudStatus('已连接 · 多设备自动同步' + (tbs.length ? ' · 待清理 ' + tbs.length : ''), 'ok');
@@ -2380,16 +2420,13 @@ async function applyDownloaded(cloudId, c, blob){
   state.thumbs.set(nid, URL.createObjectURL(thumb));
 }
 
-async function cloudSync(manual){
-  if (_cloudSyncBusy) return;
-  if (!state.cloudCfg){ if (manual) toast('未配置云同步', 'err'); return; }
-  _cloudSyncBusy = true;
-  setCloudStatus('同步中…', 'busy');
+async function syncOnce(cfg, label){
+  setCloudStatus('同步中…（' + label + '）', 'busy');
   try{
     // 确保云端目录存在（群晖 WebDAV 需要父目录）
-    try{ await dav('MKCOL', _CLOUD_DIR); }catch(e){}
+    try{ await dav(cfg, 'MKCOL', _CLOUD_DIR); }catch(e){}
     // 1. 读取云端清单
-    let manifest = await davGetJson(_CLOUD_DIR + '/manifest.json');
+    let manifest = await davGetJson(cfg, _CLOUD_DIR + '/manifest.json');
     if (!manifest || !manifest.photos) manifest = { photos: {} };
     const cloudMap = manifest.photos;
     // 2. 删除同步：本地删过的照片，云端一并删除
@@ -2397,7 +2434,7 @@ async function cloudSync(manual){
     let removed = 0;
     for (const id of tbs){
       if (cloudMap[id]){
-        try{ await dav('DELETE', _CLOUD_DIR + '/photos/' + id + cloudMap[id].ext); }catch(e){}
+        try{ await dav(cfg, 'DELETE', _CLOUD_DIR + '/photos/' + id + cloudMap[id].ext); }catch(e){}
         delete cloudMap[id];
         removed++;
       }
@@ -2405,12 +2442,14 @@ async function cloudSync(manual){
     // 3. 上传：本地有而云端没有，或本地更新
     let up = 0;
     for (const m of state.meta){
+      // 跨设备去重：云端已有相同内容的照片则跳过上传
+      if (m.hash && Object.values(cloudMap).some(x => x.hash && x.hash === m.hash)) continue;
       const c = cloudMap[m.id];
       if (!c){
         const rec = await dbGet(S_BLOBS, m.id + ':f');
         if (!rec || !rec.blob) continue;
         const ext = ((m.name && m.name.match(/\.\w+$/)) || ['.jpg'])[0];
-        const res = await dav('PUT', _CLOUD_DIR + '/photos/' + m.id + ext, rec.blob);
+        const res = await dav(cfg, 'PUT', _CLOUD_DIR + '/photos/' + m.id + ext, rec.blob);
         if (!res.ok) throw new Error('上传失败（' + res.status + '）');
         cloudMap[m.id] = { m: Object.assign({}, m), hash: m.hash || null, ext: ext, size: rec.blob.size, pt: m.addedAt || Date.now() };
         up++;
@@ -2418,14 +2457,14 @@ async function cloudSync(manual){
         if ((m.addedAt || 0) >= (c.pt || 0)){
           const rec = await dbGet(S_BLOBS, m.id + ':f');
           if (rec && rec.blob){
-            const res = await dav('PUT', _CLOUD_DIR + '/photos/' + m.id + c.ext, rec.blob);
+            const res = await dav(cfg, 'PUT', _CLOUD_DIR + '/photos/' + m.id + c.ext, rec.blob);
             if (!res.ok) throw new Error('上传失败（' + res.status + '）');
             cloudMap[m.id] = { m: Object.assign({}, m), hash: m.hash || null, ext: c.ext, size: rec.blob.size, pt: m.addedAt || Date.now() };
             up++;
           }
         }else{
           // 云端更新：下载覆盖本地
-          const res = await dav('GET', _CLOUD_DIR + '/photos/' + m.id + c.ext);
+          const res = await dav(cfg, 'GET', _CLOUD_DIR + '/photos/' + m.id + c.ext);
           if (res.ok) await applyDownloaded(m.id, c, await res.blob());
         }
       }
@@ -2433,27 +2472,63 @@ async function cloudSync(manual){
     // 4. 下载：云端有而本地没有
     let dn = 0;
     for (const [id, c] of Object.entries(cloudMap)){
+      // 跨设备去重：本地已有相同内容的照片则跳过下载
+      if (c.hash && state.meta.some(x => x.hash && x.hash === c.hash)) continue;
       if (!state.meta.some(m => m.id === id)){
-        const res = await dav('GET', _CLOUD_DIR + '/photos/' + id + c.ext);
+        const res = await dav(cfg, 'GET', _CLOUD_DIR + '/photos/' + id + c.ext);
         if (!res.ok) continue;
         await applyDownloaded(id, c, await res.blob());
         dn++;
       }
     }
     // 5. 写回清单
-    const mres = await dav('PUT', _CLOUD_DIR + '/manifest.json',
+    const mres = await dav(cfg, 'PUT', _CLOUD_DIR + '/manifest.json',
       new Blob([JSON.stringify({ photos: cloudMap, updatedAt: Date.now() })], { type: 'application/json' }));
     if (!mres.ok) throw new Error('清单写入失败（' + mres.status + '）');
     if (tbs.length) await saveTombstones([]);
+    return { up: up, dn: dn, removed: removed };
+  }catch(e){
+    throw e;
+  }
+}
+
+/* 双通道同步：先暂存站（电脑，局域网优先），再 NAS（回家后自动同步） */
+async function cloudSync(manual){
+  if (_cloudSyncBusy) return;
+  if (!state.stageCfg && !state.cloudCfg){ if (manual) toast('未配置暂存站或云同步', 'err'); return; }
+  _cloudSyncBusy = true;
+  let up = 0, dn = 0, removed = 0, okAny = false, nasMsg = '';
+  const targets = [];
+  if (state.stageCfg) targets.push({ cfg: state.stageCfg, label: '暂存站' });
+  if (state.cloudCfg) targets.push({ cfg: state.cloudCfg, label: 'NAS' });
+  try{
+    for (const t of targets){
+      try{
+        const r = await syncOnce(t.cfg, t.label);
+        up += r.up; dn += r.dn; removed += r.removed;
+        okAny = true;
+        if (t.label === 'NAS') _cloudFailStreak = 0;
+      }catch(e){
+        if (t.label === 'NAS'){
+          nasMsg = (e && e.message) || e;
+          _cloudFailStreak++;
+        }
+        // 暂存站失败静默跳过：不在同一局域网属正常，不影响 NAS 同步
+      }
+    }
     renderAll();
     refreshSyncInfo();
-    setCloudStatus('已同步 · 上传 ' + up + ' / 下载 ' + dn + (removed ? ' / 清理 ' + removed : ''), 'ok');
-    if (manual) toast('云同步完成：上传 ' + up + '，下载 ' + dn);
-    _cloudFailStreak = 0;
-    return true;
-  }catch(e){
-    setCloudStatus('同步失败：' + ((e && e.message) || e), 'err');
-    if (manual) toast('云同步失败，请检查网络和配置', 'err');
+    const parts = [];
+    if (up) parts.push('上传 ' + up);
+    if (dn) parts.push('下载 ' + dn);
+    if (removed) parts.push('清理 ' + removed);
+    if (okAny){
+      setCloudStatus('已同步 · ' + (parts.join(' · ') || '无变化'), 'ok');
+      if (manual) toast('同步完成：' + (parts.join('，') || '无变化'));
+      return true;
+    }
+    setCloudStatus('同步失败：' + (nasMsg || '暂存站和 NAS 均不可达'), 'err');
+    if (manual) toast('同步失败，请检查网络和配置', 'err');
     return false;
   }finally{
     _cloudSyncBusy = false;
@@ -2484,13 +2559,37 @@ async function cloudMarkDeleted(ids){
   if (!_cloudSyncBusy) cloudSync(false);
 }
 
+async function getStageCfg(){
+  const r = await dbGet(S_SYNC, 'stage');
+  return r && r.v ? r.v : null;
+}
+async function saveStageCfg(v){ await dbPut(S_SYNC, { key: 'stage', v }); }
+
+async function stageSaveCfg(server, user, pass){
+  if (!server){ toast('请填写暂存站地址', 'err'); return; }
+  await saveStageCfg({ server: server.trim(), user: (user || 'admin').trim(), pass: pass || 'admin' });
+  state.stageCfg = await getStageCfg();
+  try{
+    try{ await dav(state.stageCfg, 'MKCOL', _CLOUD_DIR); }catch(e){}
+    const res = await dav(state.stageCfg, 'GET', _CLOUD_DIR + '/manifest.json');
+    if (res.status !== 200 && res.status !== 404) throw new Error('连接异常（' + res.status + '）');
+    $('#stageForm').style.display = 'none';
+    toast('暂存站已连接，正在首次同步…');
+    await cloudRender();
+    await cloudSync(true);
+  }catch(e){
+    setCloudStatus('暂存站连接失败：' + ((e && e.message) || e), 'err');
+    toast('暂存站连接失败：请确认电脑已运行「启动暂存站.bat」，且手机和电脑在同一 WiFi', 'err');
+  }
+}
+
 async function cloudSaveCfg(server, user, pass){
   if (!server || !user || !pass){ toast('请完整填写服务器地址、用户名和密码', 'err'); return; }
   await saveCloudCfg({ server: server.trim(), user: user.trim(), pass: pass });
   state.cloudCfg = await getCloudCfg();
   try{
-    try{ await dav('MKCOL', _CLOUD_DIR); }catch(e){}
-    const res = await dav('GET', _CLOUD_DIR + '/manifest.json');
+    try{ await dav(state.cloudCfg, 'MKCOL', _CLOUD_DIR); }catch(e){}
+    const res = await dav(state.cloudCfg, 'GET', _CLOUD_DIR + '/manifest.json');
     if (res.status !== 200 && res.status !== 404) throw new Error('连接异常（' + res.status + '）');
     $('#cloudForm').style.display = 'none';
     setCloudStatus('已连接，正在首次同步…', 'busy');
@@ -2538,8 +2637,9 @@ if ('serviceWorker' in navigator && location.protocol === 'https:'){
   renderAll();
   refreshSyncInfo();
   state.cloudCfg = await getCloudCfg();
+  state.stageCfg = await getStageCfg();
   await cloudRender();
-  if (state.cloudCfg) setTimeout(() => cloudSync(false), 1500);
+  if (state.stageCfg || state.cloudCfg) setTimeout(() => cloudSync(false), 1500);
   setInterval(() => cloudAutoTick(), 60000);
 })();
 </script>
