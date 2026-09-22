@@ -331,6 +331,14 @@ input{font-family:inherit;font-size:inherit}
 #selBar button:hover{background:rgba(255,255,255,.14)}
 #selBar button.danger:hover{background:rgba(255,59,48,.85)}
 #selBar button svg{width:15px;height:15px}
+#selBar .sub-only{display:none}
+#selBar.sub-mode .photo-only{display:none}
+#selBar.sub-mode .sub-only{display:inline-flex}
+#selBar .sub-only{display:none}
+.coll-card.sel{cursor:pointer;position:relative}
+.coll-card.sel .pc-check{position:absolute;top:10px;right:10px;width:22px;height:22px;border-radius:50%;border:2px solid rgba(0,0,0,.18);display:flex;align-items:center;justify-content:center;background:#fff}
+.coll-card.sel.on .pc-check{background:var(--accent);border-color:var(--accent)}
+.coll-card.sel.on .pc-check svg{display:block;width:12px;height:12px;color:#fff}
 
 /* ===================== 上传进度 ===================== */
 #uploadBar{
@@ -653,9 +661,12 @@ input{font-family:inherit;font-size:inherit}
   <span class="sep"></span>
   <button id="selAll">
 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg><span>全选</span></button>
-  <button id="selMove"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h11v4M4 12h7v4M4 19h11"/><path d="M15 5l4 4-4 4"/></svg>移动</button>
-  <button id="selDownload"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12M6 10l6 6 6-6"/><path d="M4 20h16"/></svg>下载</button>
-  <button class="danger" id="selDelete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5h6v2M6.5 7l1 13h9l1-13M10 11v5M14 11v5"/></svg>删除</button>
+  <button class="photo-only" id="selMove"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h11v4M4 12h7v4M4 19h11"/><path d="M15 5l4 4-4 4"/></svg>移动</button>
+  <button class="photo-only" id="selDownload"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12M6 10l6 6 6-6"/><path d="M4 20h16"/></svg>下载</button>
+  <button class="danger photo-only" id="selDelete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5h6v2M6.5 7l1 13h9l1-13M10 11v5M14 11v5"/></svg>删除</button>
+  <button class="sub-only" id="selSubRename"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h5L19 10a2.1 2.1 0 0 0-3-3L6 17v3z"/><path d="M13.5 6.5l3 3"/></svg>重命名</button>
+  <button class="sub-only" id="selSubMove"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h11v4M4 12h7v4M4 19h11"/><path d="M15 5l4 4-4 4"/></svg>移动</button>
+  <button class="danger sub-only" id="selSubDel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5h6v2M6.5 7l1 13h9l1-13M10 11v5M14 11v5"/></svg>删除</button>
   <button id="selClear">完成</button>
 </div>
 
@@ -774,7 +785,9 @@ const state = {
   thumbs: new Map(),   // photoId -> objectURL（缩略图）
   view: { type:'all', folderId:null, smart:null, group:null, q:'' },
   selected: new Set(),
-  selMode: false,      // 多选模式
+  selMode: false,      // 照片多选模式
+  subSel: false,       // 子目录多选模式
+  subSelSet: new Set(),
   lb: null,            // 灯箱当前 photoId
   geocodeCache: new Map(),
   uploadAbort: false,
@@ -1268,11 +1281,15 @@ function renderGrid(){
     const cur = state.colls.find(x => x.id === state.collection);
     const subs = (cur && cur.subs) || [];
     const cntOf = sub => state.meta.filter(m => collOf(m) === state.collection && (m.sub || '') === sub).length;
-    const card = (label, sub, count, icon) =>
-      '<div class="coll-card" data-bsub="' + esc(sub) + '">' +
-      '<div class="coll-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round">' + icon + '</svg></div>' +
-      '<div class="coll-name">' + esc(label) + '</div>' +
-      '<div class="coll-cnt">' + fmtCount(count) + ' 张照片</div></div>';
+    const card = (label, sub, count, icon) => {
+      const selable = state.subSel && sub !== '__all__';
+      const on = selable && state.subSelSet.has(sub);
+      return '<div class="coll-card' + (selable ? ' sel' : '') + (on ? ' on' : '') + '" data-bsub="' + esc(sub) + '">' +
+        (selable ? '<span class="pc-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg></span>' : '') +
+        '<div class="coll-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round">' + icon + '</svg></div>' +
+        '<div class="coll-name">' + esc(label) + '</div>' +
+        '<div class="coll-cnt">' + fmtCount(count) + ' 张照片</div></div>';
+    };
     const nAll = state.meta.filter(m => collOf(m) === state.collection).length;
     const fico = '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/>';
     const uico = '<circle cx="12" cy="12" r="9"/><path d="M12 7v10M7 12h10"/>';
@@ -1287,6 +1304,13 @@ function renderGrid(){
     grid.querySelectorAll('[data-bsub]').forEach(el => {
       el.onclick = () => {
         const v = el.dataset.bsub;
+        if (state.subSel && v !== '__all__'){
+          if (state.subSelSet.has(v)) state.subSelSet.delete(v);
+          else state.subSelSet.add(v);
+          renderAll();
+          renderSelBar();
+          return;
+        }
         state.view.sub = (v === '__all__') ? undefined : v;
         state.view.subMode = 'photos';
         state.view.subFromBoard = true;
@@ -1447,12 +1471,72 @@ function renderFolders(){
 
 function renderSelBar(){
   const bar = $('#selBar');
+  if (state.subSel && state.view.type === 'all' && state.view.subMode === 'board'){
+    const n = state.subSelSet.size;
+    $('#selCount').textContent = '已选 ' + n + ' 个子目录';
+    const cur = state.colls.find(x => x.id === state.collection);
+    const subs = (cur && cur.subs) || [];
+    const allSel = subs.length > 0 && subs.every(s => state.subSelSet.has(s));
+    $('#selAll').querySelector('span').textContent = allSel ? '取消全选' : '全选';
+    bar.classList.add('sub-mode');
+    bar.classList.add('show');
+    return;
+  }
+  bar.classList.remove('sub-mode');
   const n = state.selected.size;
   $('#selCount').textContent = '已选 ' + n + ' 张';
   const ids = viewPhotos().map(m => m.id);
   const allSel = ids.length > 0 && ids.every(id => state.selected.has(id));
   $('#selAll').querySelector('span').textContent = allSel ? '取消全选' : '全选';
   bar.classList.toggle('show', state.selMode || n > 0);
+}
+
+function enterSubSel(){
+  state.subSel = true;
+  state.subSelSet.clear();
+  $('#btnSelect').classList.add('on');
+  $('#btnSelect .lbl').textContent = '完成';
+  renderAll();
+}
+function exitSubSel(){
+  state.subSel = false;
+  state.subSelSet.clear();
+  $('#btnSelect').classList.remove('on');
+  $('#btnSelect .lbl').textContent = '选择';
+  renderAll();
+}
+function moveSubsDialog(subs){
+  const box = $('#modalBox');
+  const opts = state.colls.filter(c => c.id !== state.collection);
+  if (!opts.length){ toast('没有其他题材可移动', 'err'); return; }
+  box.innerHTML = '<h3>移动子目录</h3><p class="m-desc">将 ' + subs.length + ' 个子目录（含其中的照片）移到其他题材：</p>' +
+    '<ul class="move-list">' + opts.map(c => '<li data-mc="' + c.id + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>' + esc(c.name) + '</li>').join('') + '</ul>' +
+    '<div class="m-actions"><button class="m-cancel" data-close>取消</button></div>';
+  openModal();
+  box.querySelectorAll('.move-list li').forEach(li => {
+    li.onclick = async () => {
+      closeModal();
+      const cur = state.colls.find(x => x.id === state.collection);
+      const dst = state.colls.find(x => x.id === li.dataset.mc);
+      if (!cur || !dst) return;
+      for (const s of subs){
+        const i = cur.subs.indexOf(s);
+        if (i < 0) continue;
+        cur.subs.splice(i, 1);
+        if (!dst.subs.includes(s)) dst.subs.push(s);
+        for (const m of state.meta.filter(m => collOf(m) === cur.id && (m.sub || '') === s)){
+          m.collection = dst.id;
+          await dbPut(S_META, m);
+        }
+      }
+      await dbPut(S_COLLS, cur);
+      await dbPut(S_COLLS, dst);
+      pushServerSettings();
+      exitSubSel();
+      renderAll();
+      toast('已移动 ' + subs.length + ' 个子目录到「' + dst.name + '」');
+    };
+  });
 }
 
 function renderSubBar(){
@@ -1656,6 +1740,14 @@ function openCollManage(){
 }
 
 function renderAll(){
+  if (!(state.view.type === 'all' && state.view.subMode === 'board')){
+    if (state.subSel){
+      state.subSel = false;
+      state.subSelSet.clear();
+      $('#btnSelect').classList.remove('on');
+      $('#btnSelect .lbl').textContent = '选择';
+    }
+  }
   renderSubBar();
   renderColls();
   renderTopbar();
@@ -2384,9 +2476,23 @@ function bindEvents(){
 
   // 选择模式
   $('#btnSelect').addEventListener('click', () => {
+    if (state.view.type === 'all' && state.view.subMode === 'board'){
+      if (state.subSel) exitSubSel(); else enterSubSel();
+      return;
+    }
     if (state.selMode) exitSelMode(); else enterSelMode();
   });
   $('#selAll').addEventListener('click', () => {
+    if (state.subSel && state.view.subMode === 'board'){
+      const cur = state.colls.find(x => x.id === state.collection);
+      const subs = (cur && cur.subs) || [];
+      const allSel = subs.length > 0 && subs.every(s => state.subSelSet.has(s));
+      if (allSel) subs.forEach(s => state.subSelSet.delete(s));
+      else subs.forEach(s => state.subSelSet.add(s));
+      renderAll();
+      renderSelBar();
+      return;
+    }
     const ids = viewPhotos().map(m => m.id);
     const allSel = ids.length > 0 && ids.every(id => state.selected.has(id));
     if (allSel) ids.forEach(id => state.selected.delete(id));
@@ -2456,7 +2562,49 @@ function bindEvents(){
     toast('开始下载 ' + state.selected.size + ' 张照片');
   });
   $('#selDelete').addEventListener('click', () => confirmDelete([...state.selected]));
-  $('#selClear').addEventListener('click', () => { if (state.selMode) exitSelMode(); else { state.selected.clear(); renderAll(); } });
+  $('#selSubRename').addEventListener('click', () => {
+    if (state.subSelSet.size !== 1){ toast('请选择 1 个子目录重命名', 'err'); return; }
+    const cur = state.colls.find(x => x.id === state.collection);
+    const s = [...state.subSelSet][0];
+    askName('重命名子目录', '输入新的子目录名称。', s, async v => {
+      const i = cur.subs.indexOf(s);
+      if (i < 0) return;
+      if (cur.subs.includes(v) && v !== s){ toast('该子目录已存在', 'err'); return; }
+      cur.subs[i] = v;
+      for (const m of state.meta.filter(m => collOf(m) === cur.id && (m.sub || '') === s)){ m.sub = v; await dbPut(S_META, m); }
+      await dbPut(S_COLLS, cur);
+      pushServerSettings();
+      exitSubSel();
+      renderAll();
+      toast('已重命名为「' + v + '」');
+    });
+  });
+  $('#selSubMove').addEventListener('click', () => {
+    if (!state.subSelSet.size){ toast('请先选择子目录', 'err'); return; }
+    moveSubsDialog([...state.subSelSet]);
+  });
+  $('#selSubDel').addEventListener('click', () => {
+    if (!state.subSelSet.size){ toast('请先选择子目录', 'err'); return; }
+    const cur = state.colls.find(x => x.id === state.collection);
+    const names = [...state.subSelSet];
+    askConfirm('删除 ' + names.length + ' 个子目录？', async () => {
+      for (const s of names){
+        const i = cur.subs.indexOf(s);
+        if (i < 0) continue;
+        cur.subs.splice(i, 1);
+        for (const m of state.meta.filter(m => collOf(m) === cur.id && (m.sub || '') === s)){ m.sub = undefined; await dbPut(S_META, m); }
+      }
+      await dbPut(S_COLLS, cur);
+      pushServerSettings();
+      exitSubSel();
+      renderAll();
+      toast('已删除 ' + names.length + ' 个子目录，照片回到未分类');
+    });
+  });
+  $('#selClear').addEventListener('click', () => {
+    if (state.subSel){ exitSubSel(); return; }
+    if (state.selMode) exitSelMode(); else { state.selected.clear(); renderAll(); }
+  });
 
   // 灯箱
   $('#lbClose').addEventListener('click', closeLightbox);
@@ -2842,9 +2990,11 @@ async function applyDownloaded(cloudId, c, blob){
 
 async function syncOnce(cfg, label, onProg){
   setCloudStatus('同步中…（' + label + '）', 'busy');
+  const dir = (cfg.dir !== undefined && cfg.dir !== null && cfg.dir !== '') ? cfg.dir : _CLOUD_DIR;
+  const cloudP = fn => dir ? (dir + '/' + fn) : fn;
   try{
     // 确保云端目录存在（群晖 WebDAV 需要父目录）
-    try{ await dav(cfg, 'MKCOL', _CLOUD_DIR); }catch(e){}
+    if (dir){ try{ await dav(cfg, 'MKCOL', dir); }catch(e){} }
     // 1. 读取云端清单
     let manifest = await davGetJson(cfg, 'manifest.json');
     if (!manifest || !manifest.photos) manifest = { photos: {} };
@@ -2854,7 +3004,7 @@ async function syncOnce(cfg, label, onProg){
     let removed = 0;
     for (const id of tbs){
       if (cloudMap[id]){
-        try{ await dav(cfg, 'DELETE', _CLOUD_DIR + '/' + id + cloudMap[id].ext); }catch(e){}
+        try{ await dav(cfg, 'DELETE', cloudP(id + cloudMap[id].ext)); }catch(e){}
         delete cloudMap[id];
         removed++;
       }
@@ -2873,7 +3023,7 @@ async function syncOnce(cfg, label, onProg){
         const rec = await dbGet(S_BLOBS, m.id + ':f');
         if (!rec || !rec.blob) continue;
         const ext = ((m.name && m.name.match(/\.\w+$/)) || ['.jpg'])[0];
-        const res = await dav(cfg, 'PUT', _CLOUD_DIR + '/' + m.id + ext, rec.blob);
+        const res = await dav(cfg, 'PUT', cloudP(m.id + ext), rec.blob);
         if (!res.ok) throw new Error('上传失败（' + res.status + '）');
         cloudMap[m.id] = { m: Object.assign({}, m), hash: m.hash || null, ext: ext, size: rec.blob.size, pt: m.addedAt || Date.now() };
         up++;
@@ -2881,14 +3031,14 @@ async function syncOnce(cfg, label, onProg){
         if ((m.addedAt || 0) >= (c.pt || 0)){
           const rec = await dbGet(S_BLOBS, m.id + ':f');
           if (rec && rec.blob){
-            const res = await dav(cfg, 'PUT', _CLOUD_DIR + '/' + m.id + c.ext, rec.blob);
+            const res = await dav(cfg, 'PUT', cloudP(m.id + c.ext), rec.blob);
             if (!res.ok) throw new Error('上传失败（' + res.status + '）');
             cloudMap[m.id] = { m: Object.assign({}, m), hash: m.hash || null, ext: c.ext, size: rec.blob.size, pt: m.addedAt || Date.now() };
             up++;
           }
         }else{
           // 云端更新：下载覆盖本地
-          const res = await dav(cfg, 'GET', _CLOUD_DIR + '/' + m.id + c.ext);
+          const res = await dav(cfg, 'GET', cloudP(m.id + c.ext));
           if (res.ok) await applyDownloaded(m.id, c, await res.blob());
         }
       }
@@ -2903,7 +3053,7 @@ async function syncOnce(cfg, label, onProg){
       // 跨设备去重：本地已有相同内容的照片则跳过下载
       if (c.hash && state.meta.some(x => x.hash && x.hash === c.hash)) continue;
       if (!state.meta.some(m => m.id === id)){
-        const res = await dav(cfg, 'GET', _CLOUD_DIR + '/' + id + c.ext);
+        const res = await dav(cfg, 'GET', cloudP(id + c.ext));
         if (!res.ok) continue;
         await applyDownloaded(id, c, await res.blob());
         dn++;
