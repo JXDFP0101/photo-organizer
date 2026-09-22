@@ -2863,7 +2863,27 @@ function isLocalServerPage(){
   return (location.protocol === 'http:' || location.protocol === 'https:') && location.origin.indexOf('github.io') < 0;
 }
 async function pushServerSettings(){
-  const payload = { netCfgs: state.netCfgs, colls: state.colls, savedAt: Date.now() };
+  // 先读回服务器现有设置，合并后写入：避免空库/默认题材覆盖掉已有的子目录
+  let remote = null;
+  try{ remote = await fetchLocalServerSettings(); }catch(e){}
+  if (!remote || (!remote.colls && !remote.netCfgs)){
+    try{ remote = await fetchSettingsFromServer(state.netCfgs); }catch(e){}
+  }
+  const collsById = new Map();
+  for (const c of state.colls) collsById.set(c.id, JSON.parse(JSON.stringify(c)));
+  if (remote && Array.isArray(remote.colls)){
+    for (const rc of remote.colls){
+      if (!collsById.has(rc.id)){
+        collsById.set(rc.id, JSON.parse(JSON.stringify(rc)));
+      }else{
+        const lc = collsById.get(rc.id);
+        if ((!lc.subs || !lc.subs.length) && rc.subs && rc.subs.length) lc.subs = rc.subs.slice();
+      }
+    }
+  }
+  const netCfgs = (state.netCfgs && state.netCfgs.length) ? state.netCfgs
+    : (remote && Array.isArray(remote.netCfgs)) ? remote.netCfgs : [];
+  const payload = { netCfgs: netCfgs, colls: Array.from(collsById.values()), savedAt: Date.now() };
   const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
   // 1) 页面自己的服务器（局域网暂存站页面：无需任何配置即可读写记忆文件）
   if (isLocalServerPage()){
@@ -2920,9 +2940,14 @@ async function loadNetCfgs(){
       if (Array.isArray(s.colls) && s.colls.length){
         for (const c of s.colls){
           if (!c.subs) c.subs = [];
-          if (!state.colls.some(x => x.id === c.id)){
+          const ex = state.colls.find(x => x.id === c.id);
+          if (!ex){
             state.colls.push(c);
             await dbPut(S_COLLS, c);
+            changed = true;
+          }else if (c.subs.length && (!ex.subs || !ex.subs.length)){
+            ex.subs = c.subs.slice();
+            await dbPut(S_COLLS, ex);
             changed = true;
           }
         }
