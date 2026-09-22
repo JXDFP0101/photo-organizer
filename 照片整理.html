@@ -98,6 +98,8 @@ input{font-family:inherit;font-size:inherit}
 .side-item .cnt{margin-left:auto;font-size:12px;color:var(--text-3)}
 .side-item.active .cnt{color:var(--accent)}
 .side-item .dot{width:8px;height:8px;border-radius:50%;margin-left:auto;box-shadow:inset 0 0 0 1px rgba(0,0,0,.08)}
+.color-dot{width:11px;height:11px;border-radius:50%;flex-shrink:0;box-shadow:inset 0 0 0 1px rgba(0,0,0,.1)}
+.custom-h{margin:8px 10px 2px;font-size:11px;color:var(--text-3);font-weight:600;letter-spacing:.3px}
 .side-item .acts{display:none;margin-left:6px;gap:2px}
 .side-item:hover .acts{display:flex}
 .side-item .acts button{
@@ -177,7 +179,11 @@ input{font-family:inherit;font-size:inherit}
 #groupBar .gb-back svg{width:14px;height:14px}
 #groupBar .gb-name{font-size:15px;font-weight:600;margin-left:4px}
 
-.smart-h{display:flex;align-items:center;gap:9px;margin:26px 0 12px;padding:0 2px}
+.smart-h{display:flex;align-items:center;gap:9px;margin:0 0 14px;padding:0 2px}
+.smart-block{
+  background:var(--surface);border:1px solid var(--border);border-radius:18px;
+  box-shadow:var(--shadow-sm);padding:18px 18px 8px;margin-bottom:22px;
+}
 .smart-h:first-child{margin-top:0}
 .smart-h .sh-dot{width:10px;height:10px;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(0,0,0,.1)}
 .smart-h .sh-name{font-size:15px;font-weight:600}
@@ -455,15 +461,10 @@ input{font-family:inherit;font-size:inherit}
     </div>
 
     <div class="side-sec" style="display:flex;flex-direction:column;flex:1;min-height:0">
-      <div class="side-sec-h">
-        <span>我的文件夹</span>
-        <button id="btnNewFolder" title="新建文件夹">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-        </button>
-      </div>
+      <div class="side-sec-h"><span>颜色文件夹</span></div>
       <ul id="folderList"></ul>
       <div class="side-foot">
-        <div class="st-tip">照片全部保存在本地浏览器（IndexedDB），<b>不会上传到任何服务器</b>。清理浏览器数据会清空相册，记得定期导出。</div>
+        <div class="st-tip">照片按 10 大色系自动分类，无需手动建文件夹。照片全部保存在本地浏览器，不会上传到任何服务器；清理浏览器数据会清空相册。</div>
       </div>
     </div>
   </aside>
@@ -934,6 +935,7 @@ function smartKey(m){
 function viewPhotos(){
   let list = state.meta;
   if (state.view.type === 'folder') list = list.filter(m => m.folderId === state.view.folderId);
+  else if (state.view.type === 'color') list = list.filter(m => (m.colorName || '未识别') === state.view.colorKey);
   else if (state.view.type === 'smart' && state.view.group) list = list.filter(m => smartKey(m) === state.view.group);
   const q = state.view.q.trim().toLowerCase();
   if (q){
@@ -962,6 +964,7 @@ function smartGroups(){
 
 function viewTitleText(){
   const t = state.view;
+  if (t.type === 'color') return t.colorKey || '颜色文件夹';
   if (t.type === 'folder'){
     const f = state.folders.find(x => x.id === t.folderId);
     return f ? f.name : '全部照片';
@@ -980,7 +983,8 @@ function viewSubText(){
     const g = smartGroups().length;
     return `${fmtCount(n)} 张照片 · ${g} 个分组`;
   }
-  if (t.type === 'folder') return `${fmtCount(n)} 张照片 · 我的文件夹`;
+  if (t.type === 'color') return `${fmtCount(n)} 张照片 · 颜色文件夹`;
+  if (t.type === 'folder') return `${fmtCount(n)} 张照片 · 自定义文件夹`;
   return `${fmtCount(n)} 张照片`;
 }
 
@@ -1055,16 +1059,17 @@ function renderGrid(){
     empty.classList.remove('show');
     const frag = document.createDocumentFragment();
     for (const g of groups){
-      const sec = document.createElement('div');
+      const block = document.createElement('div');
+      block.className = 'smart-block';
       const dot = t.smart === 'color' ? (COLOR_HEX[g.key] || '#8e8e93')
         : (g.items[0].colorHex || '#8e8e93');
-      sec.innerHTML = '<div class="smart-h"><span class="sh-dot" style="background:' + dot + '"></span>' +
+      block.innerHTML = '<div class="smart-h"><span class="sh-dot" style="background:' + dot + '"></span>' +
         '<span class="sh-name">' + esc(g.key) + '</span>' +
         '<span class="sh-cnt">' + g.items.length + ' 张</span>' +
         '<button class="sh-open" data-group="' + esc(g.key) + '">只看此组</button></div>' +
         '<div class="grid-sec">' + g.items.map(m => cardHTML(m, t.smart==='color' ? null : g.key)).join('') + '</div>';
-      sec.querySelector('.sh-open').onclick = () => { state.view.group = g.key; state.view.q=''; $('#searchInput').value=''; renderAll(); };
-      frag.appendChild(sec);
+      block.querySelector('.sh-open').onclick = () => { state.view.group = g.key; state.view.q=''; $('#searchInput').value=''; renderAll(); };
+      frag.appendChild(block);
     }
     grid.innerHTML = '';
     grid.appendChild(frag);
@@ -1102,21 +1107,28 @@ function showEmpty(title, desc){
 
 function renderFolders(){
   const ul = $('#folderList');
-  if (!state.folders.length){
-    ul.innerHTML = '<li class="empty-hint">还没有文件夹，点右上角 + 新建一个，给照片分类。</li>';
-    return;
+  const t = state.view;
+  let html = '';
+  for (const c of COLOR_ORDER){
+    const n = state.meta.filter(m => (m.colorName || '未识别') === c).length;
+    const on = t.type === 'color' && t.colorKey === c;
+    html += '<li class="side-item color-item' + (on ? ' active' : '') + '" data-color="' + c + '">' +
+      '<span class="ic"><span class="color-dot" style="background:' + COLOR_HEX[c] + '"></span></span>' +
+      '<span>' + esc(c) + '</span>' +
+      '<span class="cnt">' + fmtCount(n) + '</span></li>';
   }
-  ul.innerHTML = state.folders.map(f => {
-    const n = state.meta.filter(m => m.folderId === f.id).length;
-    return '<li class="side-item folder-item" data-fid="' + f.id + '" data-name="' + esc(f.name) + '">' +
-      '<span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg></span>' +
-      '<span class="f-name" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(f.name) + '</span>' +
-      '<span class="cnt">' + fmtCount(n) + '</span>' +
-      '<span class="acts">' +
-      '<button class="f-rename" title="重命名"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19.5 8.5a2.1 2.1 0 0 0-3-3L5 17v3z"/></svg></button>' +
-      '<button class="f-del danger" title="删除文件夹"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5h6v2M6.5 7l1 13h9l1-13M10 11v5M14 11v5"/></svg></button>' +
-      '</span></li>';
-  }).join('');
+  if (state.folders.length){
+    html += '<li class="custom-h">自定义</li>';
+    html += state.folders.map(f => {
+      const n = state.meta.filter(m => m.folderId === f.id).length;
+      const on = t.type === 'folder' && t.folderId === f.id;
+      return '<li class="side-item folder-item' + (on ? ' active' : '') + '" data-fid="' + f.id + '">' +
+        '<span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg></span>' +
+        '<span class="f-name" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(f.name) + '</span>' +
+        '<span class="cnt">' + fmtCount(n) + '</span></li>';
+    }).join('');
+  }
+  ul.innerHTML = html;
 }
 
 function renderSelBar(){
@@ -1350,17 +1362,37 @@ async function deleteFolder(id){
 
 function openMoveDialog(ids){
   const box = $('#modalBox');
-  const folders = state.folders.map(f =>
+  const colorLis = COLOR_ORDER.map(c =>
+    '<li data-color="' + c + '"><span class="color-dot" style="background:' + COLOR_HEX[c] + '"></span>' + esc(c) + '</li>').join('');
+  const folderLis = state.folders.map(f =>
     '<li data-fid="' + f.id + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>' + esc(f.name) + '</li>').join('');
-  box.innerHTML = '<h3>移动到</h3><p class="m-desc">将 ' + ids.length + ' 张照片移动到：</p>' +
-    '<ul class="move-list">' +
-    '<li data-fid="__none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>未分类</li>' +
-    (folders || '') + '</ul>' +
+  const extra = folderLis ? '<li class="custom-h">自定义</li>' + folderLis : '';
+  box.innerHTML = '<h3>归入</h3><p class="m-desc">将 ' + ids.length + ' 张照片归入色系（自动重新分类后的照片会跟随分析结果）：</p>' +
+    '<ul class="move-list">' + colorLis + extra + '</ul>' +
     '<div class="m-actions"><button class="m-cancel" data-close>取消</button></div>';
   openModal();
   box.querySelectorAll('.move-list li').forEach(li => {
-    li.onclick = () => { closeModal(); movePhotos(ids, li.dataset.fid === '__none' ? null : li.dataset.fid); };
+    li.onclick = () => {
+      closeModal();
+      if (li.dataset.color) moveToColor(ids, li.dataset.color);
+      else if (li.dataset.fid) movePhotos(ids, li.dataset.fid);
+    };
   });
+}
+
+async function moveToColor(ids, colorName){
+  let n = 0;
+  for (const id of ids){
+    const m = state.meta.find(x => x.id === id);
+    if (!m) continue;
+    m.colorName = colorName;
+    m.colorHex = COLOR_HEX[colorName] || m.colorHex;
+    await dbPut(S_META, m);
+    n++;
+  }
+  state.selected.clear();
+  renderAll();
+  toast('已将 ' + n + ' 张照片归入「' + colorName + '」');
 }
 
 /* =====================================================================
@@ -1505,6 +1537,12 @@ function openOrganize(){
     });
     if (res.aborted){ closeModal(); return; }
     if (res.error){ closeModal(); toast(res.error, 'err'); return; }
+    if (mode === 'color'){
+      closeModal();
+      renderAll();
+      toast('已按 10 大色系自动分类，见侧边栏「颜色文件夹」');
+      return;
+    }
     showPreview();
   }
   function showPreview(){
@@ -1652,21 +1690,23 @@ function bindEvents(){
       closeSidebar();
     });
   });
-  // 文件夹列表：打开 / 重命名 / 删除
+  // 文件夹列表：色系文件夹 / 自定义文件夹（只读）
   $('#folderList').addEventListener('click', e => {
-    const item = e.target.closest('.folder-item');
+    const item = e.target.closest('.side-item');
     if (!item) return;
-    const fid = item.dataset.fid;
-    if (e.target.closest('.f-rename')){
-      const f = state.folders.find(x => x.id === fid);
-      askName('重命名文件夹', '给文件夹起个新名字，照片会自动跟随。', f ? f.name : '', v => renameFolder(fid, v));
+    if (item.dataset.color){
+      state.view = { type:'color', colorKey: item.dataset.color, folderId:null, smart:null, group:null, q:'' };
+      $('#searchInput').value = '';
+      renderAll();
+      closeSidebar();
       return;
     }
-    if (e.target.closest('.f-del')){ deleteFolder(fid); return; }
-    state.view = { type:'folder', folderId: fid, smart:null, group:null, q:'' };
-    $('#searchInput').value = '';
-    renderAll();
-    closeSidebar();
+    if (item.dataset.fid){
+      state.view = { type:'folder', folderId: item.dataset.fid, colorKey:null, smart:null, group:null, q:'' };
+      $('#searchInput').value = '';
+      renderAll();
+      closeSidebar();
+    }
   });
   // 文件夹拖放目标
   $('#folderList').addEventListener('dragover', e => {
@@ -1680,17 +1720,16 @@ function bindEvents(){
     if (item) item.classList.remove('folder-drag');
   });
   $('#folderList').addEventListener('drop', e => {
-    const item = e.target.closest('.folder-item');
+    const item = e.target.closest('.side-item');
     e.preventDefault();
     if (item && dragPhotoId){
       item.classList.remove('folder-drag');
-      movePhotos([dragPhotoId], item.dataset.fid);
+      if (item.dataset.color) moveToColor([dragPhotoId], item.dataset.color);
+      else if (item.dataset.fid) movePhotos([dragPhotoId], item.dataset.fid);
     }
     dragPhotoId = null;
   });
 
-  // 新建文件夹
-  $('#btnNewFolder').addEventListener('click', () => askName('新建文件夹', '给这个分类起个名字，比如「旅行」「宝宝」「2024 夏天」。', '', createFolder));
 
   // 上传
   const openPicker = () => $('#fileInput').click();
