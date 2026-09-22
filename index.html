@@ -2834,7 +2834,7 @@ async function detectLan(){
   try{
     const ctl = new AbortController();
     const t = setTimeout(() => ctl.abort(), 2500);
-    const res = await fetch('http://mintmilk.local:8090/相册设置.json', { signal: ctl.signal, cache: 'no-store' });
+    const res = await fetch('https://mintmilk.local:8091/相册设置.json', { signal: ctl.signal, cache: 'no-store' });
     clearTimeout(t);
     return true;
   }catch(e){ return false; }
@@ -2932,6 +2932,14 @@ async function loadNetCfgs(){
       pushServerSettings();
     }
   }catch(e){}
+  // 统一入口：暂存站一律走 HTTPS（线上 https 页面访问局域网 https 不会被混合内容拦截）
+  for (const c of list){
+    const u = c.server || c.url || '';
+    if (/^https?:\/\/mintmilk\.local:8090/.test(u)){
+      const nu = u.replace(/^http:\/\//, 'https://').replace(':8090', ':8091');
+      if (c.server) c.server = nu; else if (c.url) c.url = nu;
+    }
+  }
   return list;
 }
 async function saveNetCfgs(v){ await dbPut(S_SYNC, { key: 'netcfgs', v }); }
