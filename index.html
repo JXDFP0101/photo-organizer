@@ -82,6 +82,17 @@ input{font-family:inherit;font-size:inherit}
 
 .side-sec{margin-top:6px}
 .side-sec-h{display:flex;align-items:center;justify-content:space-between;padding:10px 10px 6px}
+.side-sec-h button{width:26px;height:26px;border-radius:7px;display:flex;align-items:center;justify-content:center;color:var(--text-3);transition:.15s}
+.side-sec-h button:hover{background:var(--accent-soft);color:var(--accent)}
+.side-sec-h button svg{width:15px;height:15px}
+/* 大分类总览卡片 */
+.coll-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;width:100%;padding:4px}
+.coll-card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:30px 16px 26px;text-align:center;cursor:pointer;box-shadow:var(--shadow-sm);transition:transform .18s cubic-bezier(.3,0,.2,1),box-shadow .18s}
+.coll-card:hover{box-shadow:var(--shadow);transform:translateY(-2px)}
+.coll-ico{width:56px;height:56px;border-radius:16px;background:var(--accent-soft);color:var(--accent);display:flex;align-items:center;justify-content:center;margin:0 auto 14px}
+.coll-ico svg{width:28px;height:28px}
+.coll-name{font-size:16px;font-weight:600;color:var(--text)}
+.coll-cnt{font-size:12.5px;color:var(--text-3);margin-top:4px}
 .side-sec-h span{font-size:12px;font-weight:600;color:var(--text-3);letter-spacing:.4px}
 .side-sec-h button{color:var(--text-3);border-radius:8px;width:24px;height:24px;display:flex;align-items:center;justify-content:center;transition:.15s}
 .side-sec-h button:hover{background:rgba(0,0,0,.06);color:var(--text)}
@@ -348,6 +359,19 @@ input{font-family:inherit;font-size:inherit}
 .m-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:4px}
 .m-actions button{height:38px;padding:0 18px;border-radius:11px;font-size:13.5px;font-weight:500;transition:.15s}
 .m-actions .m-cancel{background:rgba(0,0,0,.06);color:var(--text)}
+.m-list{display:flex;flex-direction:column;gap:8px;margin:4px 0 12px;max-height:260px;overflow-y:auto}
+.m-row{display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:8px 10px}
+.m-row .m-name{flex:1;font-size:13px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.m-row button{font-size:12px;padding:4px 10px;border-radius:7px;border:1px solid var(--border);background:var(--surface);color:var(--accent);cursor:pointer;transition:.15s;font-family:inherit}
+.m-row button:hover{background:var(--accent-soft)}
+.m-row button.m-del{color:#d70015}
+.m-row button.m-del:hover{background:rgba(215,0,21,.08)}
+.m-add{display:flex;gap:8px;margin-bottom:14px}
+.m-add input{flex:1;font-size:13px;padding:8px 10px;border:1px solid var(--border);border-radius:9px;background:var(--surface);color:var(--text);outline:none;font-family:inherit;box-sizing:border-box}
+.m-add input:focus{border-color:var(--accent)}
+.m-add button{font-size:13px;padding:8px 16px;border:none;border-radius:9px;background:var(--accent);color:#fff;cursor:pointer;transition:.15s;font-family:inherit}
+.m-add button:hover{opacity:.88}
+.m-empty{font-size:12px;color:var(--text-3);padding:12px 0;text-align:center}
 .m-actions .m-cancel:hover{background:rgba(0,0,0,.1)}
 .m-actions .m-ok{background:var(--accent);color:#fff;box-shadow:0 2px 8px rgba(0,113,227,.28)}
 .m-actions .m-ok:hover{background:var(--accent-hover)}
@@ -428,6 +452,7 @@ input{font-family:inherit;font-size:inherit}
   #content{padding:16px 14px 80px}
   #grid,.grid-sec{grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:9px}
   #grid.smart-layout .grid-sec .photo-card{width:118px}
+  .coll-grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
   .search-wrap{display:none}
   .tb-btn span.lbl{display:none}
   .tb-btn{padding:0 12px}
@@ -463,6 +488,16 @@ input{font-family:inherit;font-size:inherit}
       <button id="sideClose" title="关闭菜单">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
       </button>
+    </div>
+
+    <div class="side-sec">
+      <div class="side-sec-h">
+        <span>大分类</span>
+        <button id="btnCollManage" title="管理大分类">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+      </div>
+      <ul id="collList"></ul>
     </div>
 
     <div class="side-sec">
@@ -531,6 +566,10 @@ input{font-family:inherit;font-size:inherit}
     <header id="topbar">
       <button id="hamburger" title="菜单">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
+      <button class="tb-btn btn-ghost" id="btnColls" title="大分类">
+        <svg id="btnCollsIco" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+        <span class="lbl" id="btnCollsLbl">大分类</span>
       </button>
       <div style="min-width:0">
         <div id="viewTitle">全部照片</div>
@@ -659,8 +698,8 @@ function fmtDate(ts){
 /* =====================================================================
    IndexedDB 封装
 ===================================================================== */
-const DB_NAME = 'photo_organizer', DB_VER = 2;
-const S_META = 'meta', S_BLOBS = 'blobs', S_FOLDERS = 'folders', S_SYNC = 'sync';
+const DB_NAME = 'photo_organizer', DB_VER = 3;
+const S_META = 'meta', S_BLOBS = 'blobs', S_FOLDERS = 'folders', S_SYNC = 'sync', S_COLLS = 'colls';
 
 function openDB(){
   return new Promise((resolve, reject) => {
@@ -674,6 +713,7 @@ function openDB(){
         st.createIndex('kind','kind',{unique:false});
       }
       if (!db.objectStoreNames.contains(S_SYNC)) db.createObjectStore(S_SYNC, {keyPath:'key'});
+      if (!db.objectStoreNames.contains(S_COLLS)) db.createObjectStore(S_COLLS, {keyPath:'id'});
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -696,6 +736,8 @@ function dbAllKind(kind){
 ===================================================================== */
 const state = {
   meta: [],            // 照片元数据
+  colls: [],           // 大分类
+  collection: 'default', // 当前大分类 id
   folders: [],         // 文件夹
   thumbs: new Map(),   // photoId -> objectURL（缩略图）
   view: { type:'all', folderId:null, smart:null, group:null, q:'' },
@@ -990,8 +1032,16 @@ function smartKey(m){
   return m.subjectZh || '未识别';
 }
 
+function collOf(m){ return m.collection || 'default'; }
+function collName(id){
+  const c = state.colls.find(x => x.id === id);
+  return c ? c.name : '手绘油画';
+}
+function collMeta(){ return state.meta.filter(m => collOf(m) === state.collection); }
+function collCount(id){ return state.meta.filter(m => collOf(m) === id).length; }
+
 function viewPhotos(){
-  let list = state.meta;
+  let list = state.meta.filter(m => collOf(m) === state.collection);
   if (state.view.type === 'folder') list = list.filter(m => m.folderId === state.view.folderId);
   else if (state.view.type === 'color') list = list.filter(m => (m.colorName || '未识别') === state.view.colorKey);
   else if (state.view.type === 'smart' && state.view.group) list = list.filter(m => smartKey(m) === state.view.group);
@@ -1022,6 +1072,7 @@ function smartGroups(){
 
 function viewTitleText(){
   const t = state.view;
+  if (t.type === 'collections') return '大分类';
   if (t.type === 'color') return t.colorKey || '颜色文件夹';
   if (t.type === 'folder'){
     const f = state.folders.find(x => x.id === t.folderId);
@@ -1037,23 +1088,25 @@ function viewTitleText(){
 function viewSubText(){
   const t = state.view;
   const n = viewPhotos().length;
+  if (t.type === 'collections') return `${state.colls.length} 个大分类 · ${fmtCount(state.meta.length)} 张照片`;
+  const pre = collName(state.collection) + ' · ';
   if (t.type === 'smart' && !t.group){
     const g = smartGroups().length;
-    return `${fmtCount(n)} 张照片 · ${g} 个分组`;
+    return pre + `${fmtCount(n)} 张照片 · ${g} 个分组`;
   }
-  if (t.type === 'color') return `${fmtCount(n)} 张照片 · 颜色文件夹`;
-  if (t.type === 'folder') return `${fmtCount(n)} 张照片 · 自定义文件夹`;
-  return `${fmtCount(n)} 张照片`;
+  if (t.type === 'color') return pre + `${fmtCount(n)} 张照片 · 颜色文件夹`;
+  if (t.type === 'folder') return pre + `${fmtCount(n)} 张照片 · 自定义文件夹`;
+  return pre + `${fmtCount(n)} 张照片`;
 }
 
 function renderTopbar(){
   $('#viewTitle').textContent = viewTitleText();
   $('#viewSub').textContent = viewSubText();
-  $('#navAllCnt').textContent = fmtCount(state.meta.length);
+  $('#navAllCnt').textContent = fmtCount(collMeta().length);
   ['color','region','subject'].forEach(k => {
     const el = $('#nav' + k[0].toUpperCase() + k.slice(1) + 'Cnt');
     if (el){
-      const n = state.meta.filter(m => smartKeyOf(k, m) !== (k==='region'?'未标注位置':'未识别')).length;
+      const n = collMeta().filter(m => smartKeyOf(k, m) !== (k==='region'?'未标注位置':'未识别')).length;
       el.textContent = n ? fmtCount(n) : '';
     }
   });
@@ -1063,6 +1116,16 @@ function renderTopbar(){
     const on = v === 'smart' ? (state.view.type==='smart' && state.view.smart===smart) : (state.view.type === v);
     el.classList.toggle('active', on);
   });
+  // 顶栏大分类按钮：大类总览时为返回
+  const bc = $('#btnColls');
+  if (bc){
+    const back = state.view.type === 'collections';
+    $('#btnCollsIco').innerHTML = back
+      ? '<path d="M15 5l-7 7 7 7"/>'
+      : '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>';
+    $('#btnCollsLbl').textContent = back ? '返回' : '大分类';
+    bc.title = back ? '返回' : '大分类';
+  }
   // 组内返回条 / 智能相簿操作条
   const gb = $('#groupBar');
   if (state.view.type === 'smart'){
@@ -1106,6 +1169,27 @@ function renderGrid(){
   const grid = $('#grid');
   const empty = $('#emptyState');
   const t = state.view;
+
+  if (t.type === 'collections'){
+    grid.classList.remove('smart-layout');
+    empty.classList.remove('show');
+    grid.innerHTML = '<div class="coll-grid">' + state.colls.map(c => {
+      const n = collCount(c.id);
+      return '<div class="coll-card" data-cid="' + c.id + '">' +
+        '<div class="coll-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg></div>' +
+        '<div class="coll-name">' + esc(c.name) + '</div>' +
+        '<div class="coll-cnt">' + fmtCount(n) + ' 张照片</div></div>';
+    }).join('') + '</div>';
+    grid.querySelectorAll('.coll-card').forEach(el => {
+      el.onclick = () => {
+        state.collection = el.dataset.cid;
+        state.view = { type:'all', folderId:null, smart:null, group:null, q:'' };
+        $('#searchInput').value = '';
+        renderAll();
+      };
+    });
+    return;
+  }
 
   if (t.type === 'smart' && !t.group){
     grid.classList.add('smart-layout');
@@ -1170,7 +1254,7 @@ function renderFolders(){
   const t = state.view;
   let html = '';
   for (const c of COLOR_ORDER){
-    const n = state.meta.filter(m => (m.colorName || '未识别') === c).length;
+    const n = collMeta().filter(m => (m.colorName || '未识别') === c).length;
     const on = t.type === 'color' && t.colorKey === c;
     html += '<li class="side-item color-item' + (on ? ' active' : '') + '" data-color="' + c + '">' +
       '<span class="ic"><span class="color-dot" style="background:' + COLOR_HEX[c] + '"></span></span>' +
@@ -1180,7 +1264,7 @@ function renderFolders(){
   if (state.folders.length){
     html += '<li class="custom-h">自定义</li>';
     html += state.folders.map(f => {
-      const n = state.meta.filter(m => m.folderId === f.id).length;
+      const n = collMeta().filter(m => m.folderId === f.id).length;
       const on = t.type === 'folder' && t.folderId === f.id;
       return '<li class="side-item folder-item' + (on ? ' active' : '') + '" data-fid="' + f.id + '">' +
         '<span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg></span>' +
@@ -1201,7 +1285,76 @@ function renderSelBar(){
   bar.classList.toggle('show', state.selMode || n > 0);
 }
 
+function renderColls(){
+  const ul = $('#collList');
+  if (!ul) return;
+  ul.innerHTML = state.colls.map(c => {
+    const n = collCount(c.id);
+    const on = state.collection === c.id && state.view.type !== 'collections';
+    return '<li class="side-item coll-item' + (on ? ' active' : '') + '" data-cid="' + c.id + '">' +
+      '<span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg></span>' +
+      '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(c.name) + '</span>' +
+      '<span class="cnt">' + fmtCount(n) + '</span></li>';
+  }).join('');
+}
+
+function openCollManage(){
+  const box = $('#modalBox');
+  const lis = state.colls.map(c => {
+    const n = collCount(c.id);
+    return '<div class="m-row">' +
+      '<span class="m-name">' + esc(c.name) + '（' + n + ' 张）</span>' +
+      '<button class="m-rn" data-rn="' + c.id + '">重命名</button>' +
+      (c.builtin ? '' : '<button class="m-del" data-del="' + c.id + '">删除</button>') +
+      '</div>';
+  }).join('');
+  box.innerHTML = '<h3>大分类管理</h3>' +
+    '<p class="m-desc">侧边栏顶部就是大分类入口；删除大分类后，其中的照片会归入「' + esc(collName('default')) + '」。</p>' +
+    '<div class="m-list">' + (lis || '<div class="m-empty">暂无大分类</div>') + '</div>' +
+    '<div class="m-add"><input id="newCollName" placeholder="新大分类名称，如：摄影" maxlength="20"><button id="btnAddColl">添加</button></div>' +
+    '<div class="m-actions"><button class="m-cancel" data-close>完成</button></div>';
+  openModal();
+  $('#btnAddColl').onclick = async () => {
+    const name = $('#newCollName').value.trim();
+    if (!name){ toast('请输入大分类名称', 'err'); return; }
+    const id = uid();
+    await dbPut(S_COLLS, { id, name, addedAt: Date.now() });
+    state.colls.push({ id, name });
+    renderAll();
+    openCollManage();
+  };
+  box.querySelectorAll('[data-rn]').forEach(b => {
+    b.onclick = () => {
+      const c = state.colls.find(x => x.id === b.dataset.rn);
+      if (!c) return;
+      askName('重命名大分类', '输入新的分类名称。', c.name, async v => {
+        c.name = v;
+        await dbPut(S_COLLS, c);
+        renderAll();
+        openCollManage();
+      });
+    };
+  });
+  box.querySelectorAll('[data-del]').forEach(b => {
+    b.onclick = async () => {
+      const c = state.colls.find(x => x.id === b.dataset.del);
+      if (!c || c.builtin) return;
+      await dbDel(S_COLLS, c.id);
+      state.colls = state.colls.filter(x => x.id !== c.id);
+      for (const m of state.meta.filter(m => collOf(m) === c.id)){
+        m.collection = 'default';
+        await dbPut(S_META, m);
+      }
+      if (state.collection === c.id) state.collection = 'default';
+      renderAll();
+      openCollManage();
+      toast('已删除「' + c.name + '」，照片已归入「' + collName('default') + '」');
+    };
+  });
+}
+
 function renderAll(){
+  renderColls();
   renderTopbar();
   renderFolders();
   renderGrid();
@@ -1279,6 +1432,7 @@ async function processOne(file, hash){
   const id = uid();
   const m = {
     id, name: file.name, addedAt: Date.now(), folderId: null,
+    collection: state.collection,
     hash: hash || null,
     width: img.naturalWidth, height: img.naturalHeight,
     colorHex: color.hex, colorName: color.name,
@@ -1507,11 +1661,12 @@ $('#modalRoot').addEventListener('click', e => {
 let abortAnalyze = false;
 
 async function analyzeFor(mode, onProgress){
-  const total = Math.max(1, state.meta.length);
+  const meta = collMeta();
+  const total = Math.max(1, meta.length);
   let done = 0;
   const tick = n => { done += n; onProgress && onProgress(Math.min(100, Math.round(done/total*100)), Math.min(done, total), total); };
   if (mode === 'region'){
-    const need = state.meta.filter(m => m.gps && !m.region);
+    const need = meta.filter(m => m.gps && !m.region);
     for (const m of need){
       if (abortAnalyze) return { aborted:true };
       m.region = await reverseGeocode(m.gps.lat, m.gps.lng);
@@ -1525,7 +1680,7 @@ async function analyzeFor(mode, onProgress){
   if (mode === 'subject'){
     const ok = await ensureAI();
     if (!ok) return { error:'AI 模型加载失败，请检查网络连接后重试' };
-    const need = state.meta.filter(m => !m.subjectZh);
+    const need = meta.filter(m => !m.subjectZh);
     for (const m of need){
       if (abortAnalyze) return { aborted:true };
       try{
@@ -1547,7 +1702,7 @@ async function analyzeFor(mode, onProgress){
     return { ok:true };
   }
   // color：重新分析（读取缩略图重算主色，修复旧数据与算法更新）
-  for (const m of state.meta){
+  for (const m of meta){
     if (abortAnalyze) return { aborted:true };
     try{
       const rec = await dbGet(S_BLOBS, m.id + ':t');
@@ -1570,7 +1725,7 @@ async function analyzeFor(mode, onProgress){
 
 function organizeGroups(mode){
   const map = new Map();
-  for (const m of state.meta){
+  for (const m of collMeta()){
     let k;
     if (mode === 'color'){
       k = m.colorName || '未识别';
@@ -1776,6 +1931,28 @@ function confirmDelete(ids, then){
 }
 
 function bindEvents(){
+  // 大分类列表
+  $('#collList').addEventListener('click', e => {
+    const item = e.target.closest('.coll-item');
+    if (!item) return;
+    state.collection = item.dataset.cid;
+    state.view = { type:'all', folderId:null, smart:null, group:null, q:'' };
+    $('#searchInput').value = '';
+    renderAll();
+    closeSidebar();
+  });
+  // 顶栏大分类 / 返回按钮
+  $('#btnColls').addEventListener('click', () => {
+    if (state.view.type === 'collections'){
+      state.view = { type:'all', folderId:null, smart:null, group:null, q:'' };
+    }else{
+      state.view = { type:'collections', folderId:null, smart:null, group:null, q:'' };
+    }
+    $('#searchInput').value = '';
+    renderAll();
+  });
+  // 大分类管理
+  $('#btnCollManage').addEventListener('click', openCollManage);
   // 侧边栏导航（智能相簿）
   $$('.side-item[data-view]').forEach(el => {
     el.addEventListener('click', () => {
@@ -2093,6 +2270,13 @@ async function importBackup(file){
   try{ metaList = JSON.parse(await metaEntry.async('text')); }
   catch(e){ toast('备份文件已损坏', 'err'); return; }
   const existing = new Set(state.meta.map(m => m.hash).filter(Boolean));
+  for (const m of metaList){
+    const col = m.collection || 'default';
+    if (col !== 'default' && !state.colls.some(c => c.id === col)){
+      await dbPut(S_COLLS, { id: col, name: col, addedAt: Date.now() });
+      state.colls.push({ id: col, name: col });
+    }
+  }
   let ok = 0, dup = 0, miss = 0;
   toast('正在导入 ' + metaList.length + ' 条记录…');
   for (const m of metaList){
@@ -2179,6 +2363,11 @@ async function applyDownloaded(cloudId, c, blob){
   const nid = uid();
   const nm = Object.assign({}, src, { id: nid, hash: c.hash || null, addedAt: c.pt || Date.now() });
   const thumb = await makeThumbFromBlob(blob);
+  const col = nm.collection || 'default';
+  if (col !== 'default' && !state.colls.some(c => c.id === col)){
+    await dbPut(S_COLLS, { id: col, name: col, addedAt: Date.now() });
+    state.colls.push({ id: col, name: col });
+  }
   await dbPut(S_META, nm);
   await dbPut(S_BLOBS, { id: nid + ':t', kind: 'thumb', photoId: nid, blob: thumb });
   await dbPut(S_BLOBS, { id: nid + ':f', kind: 'full', photoId: nid, blob: blob });
@@ -2331,6 +2520,12 @@ if ('serviceWorker' in navigator && location.protocol === 'https:'){
     return;
   }
   state.meta = await dbAll(S_META);
+  state.colls = await dbAll(S_COLLS);
+  if (!state.colls.length){
+    state.colls = [{ id: 'default', name: '手绘油画', addedAt: Date.now(), builtin: true }];
+    await dbPut(S_COLLS, state.colls[0]);
+  }
+  state.collection = 'default';
   state.folders = await dbAll(S_FOLDERS);
   const thumbs = await dbAllKind('thumb');
   for (const t of thumbs) state.thumbs.set(t.photoId, URL.createObjectURL(t.blob));
