@@ -215,6 +215,7 @@ input{font-family:inherit;font-size:inherit}
   padding:2px 7px;border-radius:20px;opacity:0;transition:.16s;
 }
 .photo-card:hover .pc-badge{opacity:1}
+#app.sel-mode .photo-card .pc-check{opacity:1;transform:scale(1)}
 
 /* 空状态 */
 #emptyState{
@@ -489,6 +490,10 @@ input{font-family:inherit;font-size:inherit}
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15.5l-1.9-4.6L5.5 9l4.6-1.4L12 3z"/><path d="M19 14l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8.8-2z"/></svg>
         <span class="lbl">智能整理</span>
       </button>
+      <button class="tb-btn btn-ghost" id="btnSelect" title="多选">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        <span class="lbl">选择</span>
+      </button>
       <button class="tb-btn btn-primary" id="btnUpload">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M6 10l6-6 6 6"/><path d="M4 20h16"/></svg>
         <span class="lbl">上传照片</span>
@@ -518,10 +523,12 @@ input{font-family:inherit;font-size:inherit}
 <div id="selBar">
   <span class="sel-count" id="selCount">已选 0 张</span>
   <span class="sep"></span>
+  <button id="selAll">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg><span>全选</span></button>
   <button id="selMove"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h11v4M4 12h7v4M4 19h11"/><path d="M15 5l4 4-4 4"/></svg>移动</button>
   <button id="selDownload"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12M6 10l6 6 6-6"/><path d="M4 20h16"/></svg>下载</button>
   <button class="danger" id="selDelete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5h6v2M6.5 7l1 13h9l1-13M10 11v5M14 11v5"/></svg>删除</button>
-  <button id="selClear">取消</button>
+  <button id="selClear">完成</button>
 </div>
 
 <!-- ===== 灯箱 ===== -->
@@ -634,6 +641,7 @@ const state = {
   thumbs: new Map(),   // photoId -> objectURL（缩略图）
   view: { type:'all', folderId:null, smart:null, group:null, q:'' },
   selected: new Set(),
+  selMode: false,      // 多选模式
   lb: null,            // 灯箱当前 photoId
   geocodeCache: new Map(),
   uploadAbort: false,
@@ -1115,12 +1123,31 @@ function renderSelBar(){
   const bar = $('#selBar');
   const n = state.selected.size;
   $('#selCount').textContent = '已选 ' + n + ' 张';
-  bar.classList.toggle('show', n > 0);
+  const ids = viewPhotos().map(m => m.id);
+  const allSel = ids.length > 0 && ids.every(id => state.selected.has(id));
+  $('#selAll').querySelector('span').textContent = allSel ? '取消全选' : '全选';
+  bar.classList.toggle('show', state.selMode || n > 0);
 }
 
 function renderAll(){
   renderTopbar();
   renderFolders();
+  renderGrid();
+  renderSelBar();
+}
+
+function enterSelMode(){
+  state.selMode = true;
+  $('#btnSelect').classList.add('on');
+  $('#btnSelect .lbl').textContent = '完成';
+  renderGrid();
+  renderSelBar();
+}
+function exitSelMode(){
+  state.selMode = false;
+  state.selected.clear();
+  $('#btnSelect').classList.remove('on');
+  $('#btnSelect .lbl').textContent = '选择';
   renderGrid();
   renderSelBar();
 }
@@ -1677,6 +1704,19 @@ function bindEvents(){
   // 智能整理
   $('#btnOrganize').addEventListener('click', openOrganize);
 
+  // 选择模式
+  $('#btnSelect').addEventListener('click', () => {
+    if (state.selMode) exitSelMode(); else enterSelMode();
+  });
+  $('#selAll').addEventListener('click', () => {
+    const ids = viewPhotos().map(m => m.id);
+    const allSel = ids.length > 0 && ids.every(id => state.selected.has(id));
+    if (allSel) ids.forEach(id => state.selected.delete(id));
+    else ids.forEach(id => state.selected.add(id));
+    renderGrid();
+    renderSelBar();
+  });
+
   // 搜索
   $('#searchInput').addEventListener('input', e => {
     state.view.q = e.target.value;
@@ -1697,19 +1737,22 @@ function bindEvents(){
     const card = e.target.closest('.photo-card');
     if (!card) return;
     const id = card.dataset.id;
-    if (e.target.closest('.pc-check')){
-      if (e.shiftKey && state.lastSelId){
-        const list = viewPhotos().map(m => m.id);
-        const a = list.indexOf(state.lastSelId), b = list.indexOf(id);
-        if (a >= 0 && b >= 0){
-          const lo = Math.min(a,b), hi = Math.max(a,b);
-          for (let i = lo; i <= hi; i++) state.selected.add(list[i]);
-          renderGrid(); renderSelBar();
-          return;
-        }
+    const rangeSel = (startId, endId) => {
+      const list = viewPhotos().map(m => m.id);
+      const a = list.indexOf(startId), b = list.indexOf(endId);
+      if (a >= 0 && b >= 0){
+        const lo = Math.min(a,b), hi = Math.max(a,b);
+        for (let i = lo; i <= hi; i++) state.selected.add(list[i]);
       }
-      state.lastSelId = id;
-      selectPhoto(id, state.selected.size > 0);
+    };
+    if (e.target.closest('.pc-check')){
+      if (e.shiftKey && state.lastSelId){ rangeSel(state.lastSelId, id); }
+      else{ state.lastSelId = id; selectPhoto(id, state.selected.size > 0 || state.selMode); }
+      return;
+    }
+    if (state.selMode){
+      if (e.shiftKey && state.lastSelId) rangeSel(state.lastSelId, id);
+      else{ state.lastSelId = id; selectPhoto(id, true); }
       return;
     }
     openLightbox(id);
@@ -1735,7 +1778,7 @@ function bindEvents(){
     toast('开始下载 ' + state.selected.size + ' 张照片');
   });
   $('#selDelete').addEventListener('click', () => confirmDelete([...state.selected]));
-  $('#selClear').addEventListener('click', () => { state.selected.clear(); renderAll(); });
+  $('#selClear').addEventListener('click', () => { if (state.selMode) exitSelMode(); else { state.selected.clear(); renderAll(); } });
 
   // 灯箱
   $('#lbClose').addEventListener('click', closeLightbox);
