@@ -87,6 +87,13 @@ input{font-family:inherit;font-size:inherit}
 .side-sec-h button svg{width:15px;height:15px}
 /* 题材总览卡片 */
 .coll-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;width:100%;padding:4px;grid-column:1/-1}
+#subBar{display:none;margin:14px 0 4px;grid-column:1/-1}
+#subBar .sub-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+#subBar .sub-chip{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:999px;background:#fff;border:1px solid rgba(0,0,0,.07);color:#6d6d72;font-size:13px;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.04);transition:all .15s}
+#subBar .sub-chip:hover{transform:translateY(-1px)}
+#subBar .sub-chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+#subBar .sub-chip .sc-cnt{font-size:11px;opacity:.65;font-weight:500}
+#subBar .sub-chip.add svg{width:13px;height:13px;stroke-width:2.2}
 .coll-card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:30px 16px 26px;text-align:center;cursor:pointer;box-shadow:var(--shadow-sm);transition:transform .18s cubic-bezier(.3,0,.2,1),box-shadow .18s}
 .coll-card:hover{box-shadow:var(--shadow);transform:translateY(-2px)}
 .coll-ico{width:56px;height:56px;border-radius:16px;background:var(--accent-soft);color:var(--accent);display:flex;align-items:center;justify-content:center;margin:0 auto 14px}
@@ -619,6 +626,7 @@ input{font-family:inherit;font-size:inherit}
 
     <div id="content">
       <div id="groupBar" style="display:none"></div>
+      <div id="subBar" style="display:none"></div>
       <div id="grid"></div>
       <div id="emptyState" class="show">
         <div class="es-ic">
@@ -1071,6 +1079,9 @@ function viewPhotos(){
     }
   } else {
     list = list.filter(m => collOf(m) === state.collection);
+    if (state.view.sub != null){
+      list = list.filter(m => (m.sub || '') === state.view.sub);
+    }
   }
   if (state.view.type === 'folder') list = list.filter(m => m.folderId === state.view.folderId);
   else if (state.view.type === 'color') list = list.filter(m => (m.colorName || '未识别') === state.view.colorKey);
@@ -1381,6 +1392,122 @@ function renderSelBar(){
   bar.classList.toggle('show', state.selMode || n > 0);
 }
 
+function renderSubBar(){
+  const bar = $('#subBar');
+  if (!bar) return;
+  const t = state.view;
+  const cur = state.colls.find(x => x.id === state.collection);
+  if (t.type !== 'all' || !cur){
+    bar.style.display = 'none'; bar.innerHTML = ''; return;
+  }
+  const subs = cur.subs || [];
+  const cntOf = sub => state.meta.filter(m => collOf(m) === cur.id && (m.sub || '') === sub).length;
+  const chip = (label, sub, count) => {
+    const on = (t.sub === sub) ? ' on' : '';
+    return '<button class="sub-chip' + on + '" data-sub="' + esc(sub) + '">' + esc(label) + '<span class="sc-cnt">' + fmtCount(count) + '</span></button>';
+  };
+  let html = '<div class="sub-row">' + chip('未分类', '', cntOf(''));
+  for (const s of subs) html += chip(s, s, cntOf(s));
+  html += '<button class="sub-chip add" id="btnAddSub"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>子目录</button></div>';
+  bar.innerHTML = html;
+  bar.style.display = 'block';
+  bar.querySelectorAll('.sub-chip[data-sub]').forEach(el => {
+    el.onclick = () => {
+      const v = el.dataset.sub;
+      if (state.selected.size){ moveToSub([...state.selected], v); return; }
+      state.view.sub = (t.sub === v) ? undefined : v;
+      renderAll();
+    };
+  });
+  $('#btnAddSub').onclick = () => {
+    askName('新建子目录', '为「' + cur.name + '」添加子目录，照片可归入其中。', '', async v => {
+      if (!cur.subs) cur.subs = [];
+      if (cur.subs.includes(v)){ toast('该子目录已存在', 'err'); return; }
+      cur.subs.push(v);
+      await dbPut(S_COLLS, cur);
+      pushServerSettings();
+      renderAll();
+    });
+  };
+}
+
+async function moveToSub(ids, sub){
+  for (const id of ids){
+    const m = state.meta.find(x => x.id === id);
+    if (!m) continue;
+    m.sub = sub || undefined;
+    await dbPut(S_META, m);
+  }
+  state.selected.clear();
+  renderAll();
+  toast(sub ? '已移入子目录「' + sub + '」' : '已移入「未分类」');
+}
+
+function openSubManage(c){
+  const box = $('#modalBox');
+  const subs = c.subs || [];
+  const rows = subs.map(s => {
+    const n = state.meta.filter(m => collOf(m) === c.id && (m.sub || '') === s).length;
+    return '<div class="m-row">' +
+      '<span class="m-name">' + esc(s) + '（' + n + ' 张）</span>' +
+      '<button class="m-rn" data-srn="' + esc(s) + '">重命名</button>' +
+      '<button class="m-del" data-sdel="' + esc(s) + '">删除</button></div>';
+  }).join('');
+  box.innerHTML = '<h3>「' + esc(c.name) + '」子目录</h3>' +
+    '<p class="m-desc">在题材内进一步归档照片；删除子目录后，其中的照片回到「未分类」。</p>' +
+    '<div class="m-list">' + (rows || '<div class="m-empty">暂无子目录</div>') + '</div>' +
+    '<div class="m-add"><input id="newSubName" placeholder="子目录名称，如：Q1 草稿" maxlength="20"><button id="btnAddSub2">添加</button></div>' +
+    '<div class="m-actions"><button class="m-cancel" data-close>完成</button></div>';
+  openModal();
+  $('#btnAddSub2').onclick = async () => {
+    const v = $('#newSubName').value.trim();
+    if (!v){ toast('请输入子目录名称', 'err'); return; }
+    if (!c.subs) c.subs = [];
+    if (c.subs.includes(v)){ toast('该子目录已存在', 'err'); return; }
+    c.subs.push(v);
+    await dbPut(S_COLLS, c);
+    pushServerSettings();
+    renderAll();
+    openSubManage(c);
+  };
+  box.querySelectorAll('[data-srn]').forEach(b => {
+    b.onclick = () => {
+      const old = b.dataset.srn;
+      askName('重命名子目录', '输入新的子目录名称。', old, async v => {
+        const i = c.subs.indexOf(old);
+        if (i < 0) return;
+        if (c.subs.includes(v) && v !== old){ toast('该子目录已存在', 'err'); return; }
+        c.subs[i] = v;
+        for (const m of state.meta.filter(m => collOf(m) === c.id && (m.sub || '') === old)){
+          m.sub = v; await dbPut(S_META, m);
+        }
+        await dbPut(S_COLLS, c);
+        if (state.view.sub === old) state.view.sub = v;
+        pushServerSettings();
+        renderAll();
+        openSubManage(c);
+      });
+    };
+  });
+  box.querySelectorAll('[data-sdel]').forEach(b => {
+    b.onclick = async () => {
+      const s = b.dataset.sdel;
+      const i = c.subs.indexOf(s);
+      if (i < 0) return;
+      c.subs.splice(i, 1);
+      for (const m of state.meta.filter(m => collOf(m) === c.id && (m.sub || '') === s)){
+        m.sub = undefined; await dbPut(S_META, m);
+      }
+      await dbPut(S_COLLS, c);
+      if (state.view.sub === s) state.view.sub = undefined;
+      pushServerSettings();
+      renderAll();
+      openSubManage(c);
+      toast('已删除子目录「' + s + '」，照片回到未分类');
+    };
+  });
+}
+
 function renderColls(){
   const ul = $('#collList');
   if (!ul) return;
@@ -1400,6 +1527,7 @@ function openCollManage(){
     const n = collCount(c.id);
     return '<div class="m-row">' +
       '<span class="m-name">' + esc(c.name) + '（' + n + ' 张）</span>' +
+      '<button class="m-sub" data-subm="' + c.id + '">子目录</button>' +
       '<button class="m-rn" data-rn="' + c.id + '">重命名</button>' +
       '<button class="m-del" data-del="' + c.id + '">删除</button>' +
       '</div>';
@@ -1414,12 +1542,18 @@ function openCollManage(){
     const name = $('#newCollName').value.trim();
     if (!name){ toast('请输入题材名称', 'err'); return; }
     const id = uid();
-    await dbPut(S_COLLS, { id, name, addedAt: Date.now() });
-    state.colls.push({ id, name });
+    await dbPut(S_COLLS, { id, name, subs: [], addedAt: Date.now() });
+    state.colls.push({ id, name, subs: [] });
     renderAll();
     pushServerSettings();
     openCollManage();
   };
+  box.querySelectorAll('[data-subm]').forEach(b => {
+    b.onclick = () => {
+      const c = state.colls.find(x => x.id === b.dataset.subm);
+      if (c) openSubManage(c);
+    };
+  });
   box.querySelectorAll('[data-rn]').forEach(b => {
     b.onclick = () => {
       const c = state.colls.find(x => x.id === b.dataset.rn);
@@ -1459,6 +1593,7 @@ function openCollManage(){
 }
 
 function renderAll(){
+  renderSubBar();
   renderColls();
   renderTopbar();
   renderFolders();
@@ -1729,14 +1864,19 @@ function openMoveDialog(ids){
   const folderLis = state.folders.map(f =>
     '<li data-fid="' + f.id + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>' + esc(f.name) + '</li>').join('');
   const extra = folderLis ? '<li class="custom-h">自定义</li>' + folderLis : '';
+  const curColl = state.colls.find(x => x.id === state.collection);
+  const subs = (curColl && curColl.subs) || [];
+  const subLis = subs.map(s => '<li data-sub="' + esc(s) + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>' + esc(s) + '</li>').join('');
+  const subExtra = (curColl && subLis) ? '<li class="custom-h">子目录（' + esc(curColl.name) + '）</li>' + subLis + '<li data-sub="">未分类</li>' : '';
   box.innerHTML = '<h3>归入</h3><p class="m-desc">将 ' + ids.length + ' 张照片归入色系（自动重新分类后的照片会跟随分析结果）：</p>' +
-    '<ul class="move-list">' + colorLis + extra + '</ul>' +
+    '<ul class="move-list">' + colorLis + extra + subExtra + '</ul>' +
     '<div class="m-actions"><button class="m-cancel" data-close>取消</button></div>';
   openModal();
   box.querySelectorAll('.move-list li').forEach(li => {
     li.onclick = () => {
       closeModal();
       if (li.dataset.color) moveToColor(ids, li.dataset.color);
+      else if (li.hasAttribute('data-sub')) moveToSub(ids, li.dataset.sub);
       else if (li.dataset.fid) movePhotos(ids, li.dataset.fid);
     };
   });
@@ -2519,6 +2659,7 @@ async function loadNetCfgs(){
       }
       if (Array.isArray(s.colls) && s.colls.length){
         for (const c of s.colls){
+          if (!c.subs) c.subs = [];
           if (!state.colls.some(x => x.id === c.id)){
             state.colls.push(c);
             await dbPut(S_COLLS, c);
