@@ -352,6 +352,21 @@ input{font-family:inherit;font-size:inherit}
 #uploadBar.show{display:block}
 #uploadBar .ub-fill{height:100%;background:var(--accent);width:0;transition:width .2s}
 
+/* ===================== 局域网浏览面板 ===================== */
+.bp{position:fixed;inset:0;z-index:120;background:rgba(250,250,252,.97);display:flex;flex-direction:column;animation:bpIn .16s ease}
+@keyframes bpIn{from{opacity:0;transform:scale(1.02)}to{opacity:1;transform:none}}
+.bp-head{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid rgba(0,0,0,.07);-webkit-backdrop-filter:saturate(180%) blur(20px);backdrop-filter:saturate(180%) blur(20px)}
+.bp-x{border:0;background:none;font-size:18px;color:#333;cursor:pointer;padding:2px 10px;border-radius:8px}
+.bp-x:hover{background:rgba(0,0,0,.06)}
+.bp-title{font-size:15px;font-weight:600;flex:1}
+.bp-grid{flex:1;overflow:auto;padding:12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px;align-content:start}
+.bp-thumb{aspect-ratio:1;border-radius:10px;object-fit:cover;width:100%;background:#ececf1;cursor:pointer}
+.bp-more{text-align:center;padding:12px}
+.bp-light{position:fixed;inset:0;z-index:130;background:rgba(0,0,0,.93);display:flex;align-items:center;justify-content:center;flex-direction:column;padding:20px}
+.bp-light img{max-width:94vw;max-height:80vh;border-radius:10px;object-fit:contain}
+.bp-light-bar{display:flex;gap:12px;margin-top:16px}
+.bp-light-bar a,.bp-light-bar button{color:#fff;background:rgba(255,255,255,.18);border:0;border-radius:22px;padding:9px 20px;font-size:14px;text-decoration:none;cursor:pointer}
+.bp-light-bar a:hover,.bp-light-bar button:hover{background:rgba(255,255,255,.3)}
 /* ===================== 灯箱 ===================== */
 #lightbox{
   position:fixed;inset:0;z-index:70;display:none;align-items:center;justify-content:center;
@@ -601,6 +616,14 @@ input{font-family:inherit;font-size:inherit}
           </div>
         </div>
         <div class="sync-card" style="margin-top:0">
+          <div class="sync-title">局域网浏览</div>
+          <div class="sync-note" id="browseNote">同一局域网内直接浏览并下载电脑暂存站 / NAS 里的照片文件（需处于同一局域网）。</div>
+          <div class="sync-btns">
+            <button id="btnBrowsePC">浏览电脑照片</button>
+            <button id="btnBrowseNAS">浏览 NAS</button>
+          </div>
+        </div>
+        <div class="sync-card" style="margin-top:0">
           <div class="sync-title">一键去重</div>
           <div class="sync-note" id="ddStatus">自动检测本机重复照片：同一内容只保留最新一张，其余删除（记入同步，下次「立即同步」时各端一并删除）。</div>
           <div class="sync-btns">
@@ -682,6 +705,15 @@ input{font-family:inherit;font-size:inherit}
 </div>
 
 <!-- ===== 灯箱 ===== -->
+<div id="browsePanel" class="bp" style="display:none">
+  <div class="bp-head"><button class="bp-x" id="bpClose" title="关闭">✕</button><span class="bp-title" id="bpTitle"></span></div>
+  <div class="bp-grid" id="bpGrid"></div>
+  <div class="bp-more" id="bpMoreWrap"><button id="bpMore">加载更多</button></div>
+</div>
+<div id="bpLight" class="bp-light" style="display:none">
+  <img id="bpLightImg" alt="">
+  <div class="bp-light-bar"><button id="bpLightClose">关闭</button><a id="bpLightDown" download>下载</a></div>
+</div>
 <div id="lightbox">
   <button id="lbClose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
   <button class="lb-nav" id="lbPrev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
@@ -2460,6 +2492,12 @@ function bindEvents(){
   $('#btnNetAdd').addEventListener('click', () => openNetEdit(null));
   $('#btnNetSync').addEventListener('click', () => cloudSync(true));
   $('#btnDedup').addEventListener('click', runDedupNow);
+  $('#btnBrowsePC').addEventListener('click', () => browseSource('pc'));
+  $('#btnBrowseNAS').addEventListener('click', () => browseSource('nas'));
+  $('#bpClose').addEventListener('click', () => { $('#browsePanel').style.display = 'none'; });
+  $('#bpMore').addEventListener('click', renderBpPage);
+  $('#bpLightClose').addEventListener('click', () => { $('#bpLight').style.display = 'none'; });
+  $('#bpLight').addEventListener('click', e => { if (e.target === $('#bpLight')) $('#bpLight').style.display = 'none'; });
   $('#spStop').addEventListener('click', () => {
     _syncStop = true;
     setCloudStatus('正在停止…', 'warn');
@@ -3034,6 +3072,29 @@ async function davGetJson(cfg, path){
   try{ return await res.json(); }catch(e){ return null; }
 }
 
+async function davPropfind(cfg, path){
+  try{
+    const res = await fetch(davUrl(cfg, path), {
+      method: 'PROPFIND',
+      headers: {
+        'Authorization': 'Basic ' + btoa(cfg.user + ':' + cfg.pass),
+        'Depth': '1'
+      }
+    });
+    if (!res.ok) return [];
+    const xml = await res.text();
+    const names = [];
+    const re = /<[^>]*href[^>]*>([^<]+)<\/[^>]*href[^>]*>/gi;
+    let m;
+    while ((m = re.exec(xml)) !== null){
+      const href = m[1];
+      const fn = decodeURIComponent(href.split('/').pop());
+      if (fn && fn !== '.' && fn !== '..') names.push(fn);
+    }
+    return names;
+  }catch(e){ return []; }
+}
+
 async function davHead(cfg, path){
   try{
     const res = await fetch(davUrl(cfg, path), {
@@ -3155,6 +3216,22 @@ async function syncOnce(cfg, label, onProg){
         }
       }
     }
+    // 2.6 NAS 镜像清理：NAS 是电脑的备份镜像（以电脑为主），删除 NAS 上应用历史遗留的
+    //     照片文件（mud* 前缀且不在当前清单）；不碰用户手动放的非应用文件
+    let cleaned = 0;
+    if (cfg.type === 'nas'){
+      try{
+        const nasFiles = await davPropfind(cfg, dir || '');
+        for (const fn of nasFiles){
+          if (!/^mud/.test(fn)) continue;
+          const base = fn.replace(/\.[^.]+$/, '');
+          if (!cloudMap[base] && !tbs.includes(base)){
+            try{ await dav(cfg, 'DELETE', cloudP(fn)); }catch(e){}
+            cleaned++;
+          }
+        }
+      }catch(e){}
+    }
     // 2.5 云端去重：同一内容的照片只保留一个（历史重复堆积清理）
     {
       const groups = new Map();
@@ -3205,6 +3282,20 @@ async function syncOnce(cfg, label, onProg){
               cloudMap[dupId] = { m: Object.assign({}, dup.m, { name: m.name || dup.m.name, addedAt: m.addedAt || dup.m.addedAt }), hash: m.hash, ext: dup.ext, size: dup.size, pt: m.addedAt || Date.now() };
               up++;
             }
+            // 确保目录里存在该照片文件（早期照片从未落盘，手机/局域网直连浏览需要）
+            try{
+              if (_syncStop) break;
+              const fname0 = m.id + ((m.name && m.name.match(/\.\w+$/)) || ['.jpg'])[0];
+              const has0 = await davHead(cfg, cloudP(fname0));
+              if (!has0){
+                const rec0 = await dbGet(S_BLOBS, m.id + ':f');
+                if (rec0 && rec0.blob){
+                  const r0 = await dav(cfg, 'PUT', cloudP(fname0), rec0.blob);
+                  if (!r0.ok) throw new Error('补传失败（' + r0.status + '）');
+                  up++;
+                }
+              }
+            }catch(e){}
             continue;
           }
         }else{
@@ -3238,11 +3329,12 @@ async function syncOnce(cfg, label, onProg){
         }
       }
     }
-    if (_syncStop) return { up: up, dn: 0, removed: removed, stopped: true };
-    // 4. 下载：云端有而本地没有
+    if (_syncStop) return { up: up, dn: 0, removed: removed, cleaned: cleaned, stopped: true };
+    // 4. 下载：云端有而本地没有（NAS 是备份镜像，不反向下载，跳过）
     let dn = 0;
     const dnTotal = Object.keys(cloudMap).length;
     let dnIdx = 0;
+    if (cfg.type !== 'nas')
     for (const [id, c] of Object.entries(cloudMap)){
       if (_syncStop) break;
       if (cfg.type === 'staging' && c.m && c.m.sub && _SUB_DIRS[c.m.sub]) continue;
@@ -3268,11 +3360,12 @@ async function syncOnce(cfg, label, onProg){
         dn++;
       }
     }
-    if (_syncStop) return { up: up, dn: dn, removed: removed, stopped: true };
-    // 4.5 对账：云端清单里没有的本地照片 → 本地删除（保持各端一致；
+    if (_syncStop) return { up: up, dn: dn, removed: removed, cleaned: cleaned, stopped: true };
+    // 4.5 对账（NAS 为镜像、以电脑为主，不对本地做删除对账）：
+    //      云端清单里没有的本地照片 → 本地删除（保持各端一致；
     //      仅当云端清单更新时间晚于照片加入时间才删，避免误删本端新上传；
     //      绑定子目录照片由各自专属清单管理，这里跳过）
-    {
+    if (cfg.type !== 'nas'){
       const upd = (manifest && manifest.updatedAt) || Date.now();
       const tbsSet = new Set(tbs);
       let rmLocal = 0;
@@ -3298,7 +3391,7 @@ async function syncOnce(cfg, label, onProg){
     const mres = await dav(cfg, 'PUT', cloudP('manifest.json'),
       new Blob([JSON.stringify({ photos: cloudMap, updatedAt: Date.now() })], { type: 'application/json' }));
     if (!mres.ok) throw new Error('清单写入失败（' + mres.status + '）');
-    return { up: up, dn: dn, removed: removed };
+    return { up: up, dn: dn, removed: removed, cleaned: cleaned };
   }catch(e){
     throw e;
   }
@@ -3394,6 +3487,83 @@ function runDedupNow(){
       : '未检测到重复照片。';
     toast(removed ? '已去重 ' + removed + ' 张' : '没有重复照片', removed ? 'ok' : 'ok');
   };
+}
+
+/* 局域网浏览：电脑暂存站 / NAS 文件直连查看与下载 */
+let _bpFiles = [];
+let _bpPage = 0;
+const BP_PAGE = 100;
+
+function openBrowsePanel(title, files){
+  _bpFiles = files || [];
+  _bpPage = 0;
+  $('#bpTitle').textContent = title + ' · 共 ' + _bpFiles.length + ' 个文件';
+  $('#bpGrid').innerHTML = '';
+  $('#browsePanel').style.display = 'flex';
+  renderBpMore();
+  renderBpPage();
+}
+
+function renderBpPage(){
+  const grid = $('#bpGrid');
+  const start = _bpPage * BP_PAGE;
+  const slice = _bpFiles.slice(start, start + BP_PAGE);
+  let html = '';
+  for (const f of slice){
+    html += '<img class="bp-thumb" loading="lazy" data-u="' + esc(f.u) + '" data-n="' + esc(f.n) + '" src="' + esc(f.u) + '" alt="">';
+  }
+  grid.insertAdjacentHTML('beforeend', html);
+  grid.querySelectorAll('img.bp-thumb[data-u]').forEach(img => {
+    if (img.dataset.bound) return;
+    img.dataset.bound = '1';
+    img.onclick = () => {
+      $('#bpLightImg').src = img.dataset.u;
+      const a = $('#bpLightDown');
+      a.href = img.dataset.u;
+      a.setAttribute('download', img.dataset.n);
+      $('#bpLight').style.display = 'flex';
+    };
+  });
+  _bpPage++;
+  renderBpMore();
+}
+
+function renderBpMore(){
+  const wrap = $('#bpMoreWrap');
+  wrap.style.display = (_bpPage * BP_PAGE < _bpFiles.length) ? '' : 'none';
+}
+
+async function browseSource(src){
+  if (!_lanOk){ openLanDialog(); return; }
+  try{
+    let files = [];
+    if (src === 'pc'){
+      const res = await fetch('/manifest.json', { cache: 'no-store' });
+      if (!res.ok) throw new Error('读取电脑清单失败（' + res.status + '）');
+      const j = await res.json();
+      const ph = (j && j.photos) || {};
+      for (const [id, cc] of Object.entries(ph)){
+        if (!cc || !cc.ext) continue;
+        const fname = id + cc.ext;
+        files.push({ u: '/美化成品/' + fname, n: (cc.m && cc.m.name) || fname });
+      }
+      files.sort((a, b) => a.n.localeCompare(b.n));
+    }else{
+      const cfg = state.netCfgs.find(x => x.type === 'nas' && x.enabled) || state.netCfgs.find(x => x.type === 'nas');
+      if (!cfg) throw new Error('未配置 NAS');
+      const dir = (cfg.dir !== undefined && cfg.dir !== null && cfg.dir !== '') ? cfg.dir : 'photo-organizer';
+      const names = await davPropfind(cfg, dir || '');
+      const imgRe = /\.(jpe?g|png|webp|gif|heic)$/i;
+      for (const fn of names){
+        if (!imgRe.test(fn)) continue;
+        files.push({ u: '/nas/' + dir + '/' + encodeURIComponent(fn), n: fn });
+      }
+      files.sort((a, b) => a.n.localeCompare(b.n));
+    }
+    openBrowsePanel(src === 'pc' ? '电脑暂存站' : 'NAS 群晖', files);
+  }catch(e){
+    toast((e && e.message) || '无法访问局域网', 'err');
+  }
 }
 
 /* 子目录 ↔ 真实文件夹 强绑定同步（同删同加，保持去重）
@@ -3526,7 +3696,7 @@ async function cloudSync(manual){
   _cloudSyncBusy = true;
   _syncStop = false;
   const spB = $('#spStop'); if (spB) spB.disabled = false;
-  let up = 0, dn = 0, removed = 0, okAny = false;
+  let up = 0, dn = 0, removed = 0, cleaned = 0, okAny = false;
   // 三端绝对去重第一步：先清理本端自身重复（同内容只留一条），再跨端同步
   try{
     const ld = await localDedup();
@@ -3540,6 +3710,7 @@ async function cloudSync(manual){
       try{
         const r = await syncOnce(c, c.name, (p, msg) => setSyncProg(p, c.name + ' · ' + msg));
         up += r.up; dn += r.dn; removed += r.removed;
+        if (r.cleaned) cleaned += r.cleaned;
         let wr = null;
         if (c.type === 'staging'){
           for (const [subN, dirN] of Object.entries(_SUB_DIRS)){
@@ -3579,6 +3750,7 @@ async function cloudSync(manual){
     if (up) parts.push('上传 ' + up);
     if (dn) parts.push('下载 ' + dn);
     if (removed) parts.push('清理 ' + removed);
+    if (cleaned) parts.push('NAS 清残留 ' + cleaned);
     const failN = results.filter(r => !r.ok);
     if (okAny){
       let txt = '已同步 · ' + (parts.join(' · ') || '无变化');
