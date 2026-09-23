@@ -97,6 +97,10 @@ input{font-family:inherit;font-size:inherit}
 #syncProg{padding:9px 11px;border-radius:11px;background:rgba(0,0,0,.03)}
 #syncProg .sp-bar{height:5px;border-radius:99px;background:rgba(0,0,0,.08);overflow:hidden}
 #syncProg .sp-fill{height:100%;width:0%;background:var(--accent);border-radius:99px;transition:width .25s}
+#syncProg .sp-row{display:flex;align-items:center;gap:8px}
+#syncProg .sp-row .sp-bar{flex:1}
+#syncProg .sp-stop{flex:none;padding:4px 12px;border-radius:99px;border:1px solid rgba(0,0,0,.1);background:#fff;color:#d70015;font-size:12px;cursor:pointer;font-family:inherit}
+#syncProg .sp-stop:disabled{opacity:.45;cursor:default}
 #syncProg .sp-txt{margin-top:6px;font-size:11px;color:var(--text-3,#8e8e93);line-height:1.4}
 .coll-card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:30px 16px 26px;text-align:center;cursor:pointer;box-shadow:var(--shadow-sm);transition:transform .18s cubic-bezier(.3,0,.2,1),box-shadow .18s}
 .coll-card:hover{box-shadow:var(--shadow);transform:translateY(-2px)}
@@ -590,7 +594,7 @@ input{font-family:inherit;font-size:inherit}
           <div class="sync-title">网络同步（暂存站 / NAS）</div>
           <div class="sync-note" id="netStatus">未配置。可添加多个网络配置（平时暂存站、家里暂存站、NAS 等），同步时自动逐个尝试，哪个可达就同步哪个。</div>
           <div id="netList" style="margin-top:8px"></div>
-          <div id="syncProg" style="display:none;margin-top:10px"><div class="sp-bar"><div class="sp-fill" id="spFill"></div></div><div class="sp-txt" id="spTxt"></div></div>
+          <div id="syncProg" style="display:none;margin-top:10px"><div class="sp-row"><div class="sp-bar"><div class="sp-fill" id="spFill"></div></div><button class="sp-stop" id="spStop" title="立即停止所有同步">停止</button></div><div class="sp-txt" id="spTxt"></div></div>
           <div class="sync-btns">
             <button id="btnNetAdd">添加配置</button>
             <button id="btnNetSync">立即同步</button>
@@ -2443,6 +2447,11 @@ function bindEvents(){
   // 网络同步（暂存站 / NAS 多配置）
   $('#btnNetAdd').addEventListener('click', () => openNetEdit(null));
   $('#btnNetSync').addEventListener('click', () => cloudSync(true));
+  $('#spStop').addEventListener('click', () => {
+    _syncStop = true;
+    setCloudStatus('正在停止…', 'warn');
+    const b = $('#spStop'); if (b) b.disabled = true;
+  });
   $('#netList').addEventListener('click', async e => {
     const sw = e.target.closest('[data-sw]');
     if (sw){
@@ -2826,7 +2835,7 @@ const _WM_SUB = '油画';
 function wmCollId(){ const cc = state.colls.find(x => x.name === '水印'); return cc ? cc.id : null; }
 function isWmOil(m){ const cid = wmCollId(); return !!(cid && m.collection === cid && (m.sub || '') === _WM_SUB); }
 const _SETTINGS_FILE = '相册设置.json';
-let _cloudSyncBusy = false, _cloudAutoTimer = null, _cloudFailStreak = 0;
+let _cloudSyncBusy = false, _cloudAutoTimer = null, _cloudFailStreak = 0, _syncStop = false;
 
 function cfgPath(cfg, file){
   const dir = (cfg.dir !== undefined && cfg.dir !== null && cfg.dir !== '') ? cfg.dir : '';
@@ -3134,6 +3143,7 @@ async function syncOnce(cfg, label, onProg){
     const upTotal = state.meta.length;
     let upIdx = 0;
     for (const m of state.meta){
+      if (_syncStop) break;
       upIdx++;
       if (onProg) onProg(Math.round(upIdx / Math.max(1, upTotal) * 55), '上传 ' + upIdx + '/' + upTotal + ' · ' + (m.name || '照片'));
       // 跨设备去重：同内容云端已存在时，保留最新版本（本地更新则覆盖云端元数据，否则跳过）
@@ -3181,11 +3191,13 @@ async function syncOnce(cfg, label, onProg){
         }
       }
     }
+    if (_syncStop) return { up: up, dn: 0, removed: removed, stopped: true };
     // 4. 下载：云端有而本地没有
     let dn = 0;
     const dnTotal = Object.keys(cloudMap).length;
     let dnIdx = 0;
     for (const [id, c] of Object.entries(cloudMap)){
+      if (_syncStop) break;
       dnIdx++;
       if (onProg) onProg(58 + Math.round(dnIdx / Math.max(1, dnTotal) * 37), '检查云端照片 ' + dnIdx + '/' + dnTotal);
       // 跨设备去重：本地已有同内容时保留最新版本（云端更新则同步名称，否则跳过）
@@ -3207,6 +3219,7 @@ async function syncOnce(cfg, label, onProg){
         dn++;
       }
     }
+    if (_syncStop) return { up: up, dn: dn, removed: removed, stopped: true };
     // 5. 写回清单（写入同步目录；旧版写根目录会被 NAS 拒绝）
     const mres = await dav(cfg, 'PUT', cloudP('manifest.json'),
       new Blob([JSON.stringify({ photos: cloudMap, updatedAt: Date.now() })], { type: 'application/json' }));
@@ -3303,6 +3316,7 @@ async function syncWmDir(cfg, onProg){
   let idx = 0;
   const wmUpList = state.meta.filter(isWmOil);
   for (const m of wmUpList){
+    if (_syncStop) break;
     idx++;
     if (onProg) onProg(5 + Math.round(idx / Math.max(1, wmUpList.length) * 55), '上传 ' + idx + '/' + wmUpList.length);
     if (m.hash){
@@ -3330,6 +3344,7 @@ async function syncWmDir(cfg, onProg){
       up++;
     }
   }
+  if (_syncStop) return { up: up, dn: 0, removed: removed, imp: 0, extDel: 0 };
   // 4. 删除：tombstone 中的「水印→油画」照片在目录一并删除
   let del = 0;
   const tbs = await getTombstones();
@@ -3394,6 +3409,8 @@ async function cloudSync(manual){
   const cfgs = state.netCfgs.filter(c => c.enabled);
   if (!cfgs.length){ if (manual) toast('未配置启用的网络', 'err'); return; }
   _cloudSyncBusy = true;
+  _syncStop = false;
+  const spB = $('#spStop'); if (spB) spB.disabled = false;
   let up = 0, dn = 0, removed = 0, okAny = false;
   // 三端绝对去重第一步：先清理本端自身重复（同内容只留一条），再跨端同步
   try{
@@ -3404,6 +3421,7 @@ async function cloudSync(manual){
   setSyncProg(2, '准备同步…');
   try{
     for (const c of cfgs){
+      if (_syncStop) break;
       try{
         const r = await syncOnce(c, c.name, (p, msg) => setSyncProg(p, c.name + ' · ' + msg));
         up += r.up; dn += r.dn; removed += r.removed;
@@ -3426,6 +3444,13 @@ async function cloudSync(manual){
       }
     }
     clearSyncProg();
+    if (_syncStop){
+      renderAll();
+      refreshSyncInfo();
+      setCloudStatus('同步已停止', 'warn');
+      if (manual) toast('已停止同步');
+      return true;
+    }
     const tbs2 = await getTombstones();
     if (tbs2.length) await saveTombstones([]);
     renderAll();
