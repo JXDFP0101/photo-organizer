@@ -583,7 +583,7 @@ input{font-family:inherit;font-size:inherit}
           <div class="sync-title">数据与同步</div>
           <div class="sync-row"><span>本地占用</span><b id="syncStorage">—</b></div>
           <div class="sync-row"><span>持久保存</span><b id="syncPersist">—</b></div>
-          <div class="sync-note" id="syncNote">网址、桌面快捷方式与安装版读取同一份本地数据，自动同步；离线也可浏览。</div>
+          <div class="sync-note" id="syncNote">同步全部手动：点「立即同步」才会与电脑暂存站 / NAS 同步，其余时间数据只保存在本机。</div>
           <div class="sync-btns">
             <button id="btnExport" title="把全部照片和分类信息打包下载，可导入到其他设备或版本">导出备份</button>
             <label for="importFile" class="sync-import" title="从备份文件恢复相册">导入备份</label>
@@ -1904,10 +1904,6 @@ async function handleFiles(fileList){
     ok ? '已上传 ' + ok + ' 张照片' + (dup ? '，跳过 ' + dup + ' 张重复' : '') + (fail ? '，' + fail + ' 张无法读取' : '') : '上传失败，请检查文件格式',
     fail && !ok ? 'err' : 'ok'
   );
-  if (ok && state.netCfgs.some(c => c.enabled)){
-    clearTimeout(_cloudAutoTimer);
-    _cloudAutoTimer = setTimeout(() => cloudSync(false), 8000);
-  }
 }
 
 /* =====================================================================
@@ -2731,7 +2727,7 @@ async function refreshSyncInfo(){
   }
   const note = $('#syncNote');
   if (note && location.protocol === 'file:'){
-    note.textContent = '当前是本地离线副本，数据与线上网址不互通。建议用桌面快捷方式或线上网址打开，数据自动同步。';
+    note.textContent = '当前是本地离线副本。如需同步到电脑 / NAS / 手机，请进入「网络同步」手动点「立即同步」。';
   }
 }
 
@@ -2844,7 +2840,7 @@ const _CLOUD_DIR = '美化成品';
 /* 子目录 ↔ 真实文件夹 强绑定（油画题材下）：原图 → 美化成品；水印 → 美化成品+水印 */
 const _SUB_DIRS = { '原图': '美化成品', '水印': '美化成品+水印' };
 const _SETTINGS_FILE = '相册设置.json';
-let _cloudSyncBusy = false, _cloudAutoTimer = null, _cloudFailStreak = 0, _syncStop = false;
+let _cloudSyncBusy = false, _cloudFailStreak = 0, _syncStop = false;
 
 function cfgPath(cfg, file){
   const dir = (cfg.dir !== undefined && cfg.dir !== null && cfg.dir !== '') ? cfg.dir : '';
@@ -3493,28 +3489,11 @@ async function cloudSync(manual){
   }
 }
 
-/* 周期自动同步：每 60 秒静默检查，能连上就自动补同步；连续失败 5 次暂停，等手动重试 */
-async function cloudAutoTick(){
-  if (_cloudSyncBusy || !state.netCfgs.some(c => c.enabled)) return;
-  if (_cloudFailStreak >= 5){
-    if (_cloudFailStreak === 5){
-      _cloudFailStreak = 6;
-      setCloudStatus('自动同步已暂停（多次连接失败），点「立即同步」重试', 'err');
-    }
-    return;
-  }
-  const ok = await cloudSync(false);
-  if (!ok && _cloudFailStreak >= 5){
-    setCloudStatus('自动同步已暂停（多次连接失败），点「立即同步」重试', 'err');
-  }
-}
-
 async function cloudMarkDeleted(ids){
   if (!state.netCfgs.some(c => c.enabled) || !ids.length) return;
   const tbs = await getTombstones();
   for (const id of ids){ if (!tbs.includes(id)) tbs.push(id); }
   await saveTombstones(tbs);
-  if (!_cloudSyncBusy) cloudSync(false);
 }
 
 function openNetEdit(id){
@@ -3623,11 +3602,7 @@ if ('serviceWorker' in navigator && location.protocol === 'https:'){
   state.netCfgs = await loadNetCfgs();
   await netRender();
   pushServerSettings();
-  if (state.netCfgs.some(c => c.enabled)) setTimeout(() => cloudSync(false), 1500);
-  setInterval(() => cloudAutoTick(), 20000);
-  document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && !_cloudSyncBusy) cloudAutoTick();
-  });
+  // 同步全部手动：打开页面、回到前台都不自动同步，点「立即同步」才执行
 })();
 </script>
 </body>
