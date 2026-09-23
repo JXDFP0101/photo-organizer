@@ -2845,8 +2845,8 @@ async function importBackup(file){
    云同步：LeanCloud 多设备同步
 ===================================================================== */
 const _CLOUD_DIR = '美化成品';
-/* 子目录 ↔ 真实文件夹 强绑定（油画题材下）：原图 → 美化成品；水印 → 美化成品+水印 */
-const _SUB_DIRS = { '原图': '美化成品', '水印': '美化成品+水印' };
+/* 强绑定已取消：子目录（原图 / 水印）不再与本地文件夹双向同步，照片统一走主清单同步 */
+const _SUB_DIRS = {};
 const _SETTINGS_FILE = '相册设置.json';
 let _cloudSyncBusy = false, _cloudFailStreak = 0, _syncStop = false;
 
