@@ -3170,6 +3170,16 @@ async function syncOnce(cfg, label, onProg){
       if (cfg.type === 'staging' && m.sub && _SUB_DIRS[m.sub]) continue;
       upIdx++;
       if (onProg) onProg(Math.round(upIdx / Math.max(1, upTotal) * 55), '上传 ' + upIdx + '/' + upTotal + ' · ' + (m.name || '照片'));
+      // 无指纹旧照片：同步前补算内容指纹，让去重全链路按内容识别（不靠文件名）
+      if (!m.hash){
+        const recH = await dbGet(S_BLOBS, m.id + ':f');
+        if (recH && recH.blob){
+          try{
+            const h = await fileSHA(recH.blob);
+            if (h){ m.hash = h; await dbPut(S_META, m); }
+          }catch(e){}
+        }
+      }
       // 跨设备去重：同内容云端已存在时，保留最新版本（本地更新则覆盖云端元数据，否则跳过）
       {
         if (m.hash){
@@ -3390,6 +3400,15 @@ async function syncSubDir(cfg, subName, dirName, onProg){
     if (_syncStop) break;
     idx++;
     if (onProg) onProg(5 + Math.round(idx / Math.max(1, upList.length) * 55), '上传 ' + idx + '/' + upList.length + ' · ' + (m.name || ''));
+    if (!m.hash){
+      const recH = await dbGet(S_BLOBS, m.id + ':f');
+      if (recH && recH.blob){
+        try{
+          const h = await fileSHA(recH.blob);
+          if (h){ m.hash = h; await dbPut(S_META, m); }
+        }catch(e){}
+      }
+    }
     const rec = await dbGet(S_BLOBS, m.id + ':f');
     if (!rec || !rec.blob) continue;
     const ext = ((m.name && m.name.match(/\.\w+$/)) || ['.jpg'])[0];
