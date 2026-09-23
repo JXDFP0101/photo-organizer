@@ -600,6 +600,13 @@ input{font-family:inherit;font-size:inherit}
             <button id="btnNetSync">立即同步</button>
           </div>
         </div>
+        <div class="sync-card" style="margin-top:0">
+          <div class="sync-title">一键去重</div>
+          <div class="sync-note" id="ddStatus">自动检测本机重复照片：同一内容只保留最新一张，其余删除（记入同步，下次「立即同步」时各端一并删除）。</div>
+          <div class="sync-btns">
+            <button id="btnDedup">检测并去重</button>
+          </div>
+        </div>
       </div>
     </div>
   </aside>
@@ -2452,6 +2459,7 @@ function bindEvents(){
   // 网络同步（暂存站 / NAS 多配置）
   $('#btnNetAdd').addEventListener('click', () => openNetEdit(null));
   $('#btnNetSync').addEventListener('click', () => cloudSync(true));
+  $('#btnDedup').addEventListener('click', runDedupNow);
   $('#spStop').addEventListener('click', () => {
     _syncStop = true;
     setCloudStatus('正在停止…', 'warn');
@@ -3281,7 +3289,9 @@ async function localDedup(){
       return (b.addedAt || 0) - (a.addedAt || 0);
     });
     const keep = arr[0];
-    for (const m of arr.slice(1)){
+    const toDel = arr.slice(1);
+    await cloudMarkDeleted(toDel.map(m => m.id));
+    for (const m of toDel){
       await dbDel(S_META, m.id);
       await dbDel(S_BLOBS, m.id + ':t');
       await dbDel(S_BLOBS, m.id + ':f');
@@ -3294,6 +3304,47 @@ async function localDedup(){
     state.meta = state.meta.filter(x => !arr.slice(1).some(d => d.id === x.id));
   }
   return removed;
+}
+
+function countDupMeta(){
+  const groups = new Map();
+  for (const m of state.meta){
+    let key = null;
+    if (m.hash) key = 'h:' + m.hash;
+    else if (m.size && m.name && m.name.match(/\.\w+$/)) key = 's:' + (m.size || 0) + ':' + m.name.match(/\.\w+$/)[0].toLowerCase();
+    if (!key) continue;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(m);
+  }
+  let dup = 0;
+  for (const [key, arr] of groups) if (arr.length > 1) dup += arr.length - 1;
+  return { dup: dup };
+}
+
+function runDedupNow(){
+  const { dup } = countDupMeta();
+  if (!dup){
+    $('#ddStatus').textContent = '未检测到重复照片，当前本机照片全部唯一。';
+    toast('没有检测到重复照片', 'ok');
+    return;
+  }
+  const box = $('#modalBox');
+  box.innerHTML = '<h3>一键去重</h3>' +
+    '<p class="m-desc">检测到 <b>' + dup + '</b> 张重复照片。将保留每组最新一张，其余删除（不可恢复；记入同步，下次「立即同步」时各端一并删除）。</p>' +
+    '<div class="m-actions"><button class="m-cancel" data-close>取消</button><button class="m-ok m-danger" id="ddOk">去重</button></div>';
+  openModal();
+  $('#ddOk').onclick = async () => {
+    closeModal();
+    const st = $('#ddStatus');
+    st.textContent = '正在去重…';
+    const removed = await localDedup();
+    await renderAll();
+    refreshSyncInfo();
+    st.textContent = removed
+      ? '已删除 ' + removed + ' 张重复照片，保留每组最新一张。'
+      : '未检测到重复照片。';
+    toast(removed ? '已去重 ' + removed + ' 张' : '没有重复照片', removed ? 'ok' : 'ok');
+  };
 }
 
 /* 子目录 ↔ 真实文件夹 强绑定同步（同删同加，保持去重）
@@ -3490,7 +3541,7 @@ async function cloudSync(manual){
 }
 
 async function cloudMarkDeleted(ids){
-  if (!state.netCfgs.some(c => c.enabled) || !ids.length) return;
+  if (!ids.length) return;
   const tbs = await getTombstones();
   for (const id of ids){ if (!tbs.includes(id)) tbs.push(id); }
   await saveTombstones(tbs);
