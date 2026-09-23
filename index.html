@@ -1624,7 +1624,7 @@ function openSubManage(c){
       '<button class="m-del" data-sdel="' + esc(s) + '">删除</button></div>';
   }).join('');
   box.innerHTML = '<h3>「' + esc(c.name) + '」子目录</h3>' +
-    '<p class="m-desc">在题材内进一步归档照片；删除子目录后，其中的照片回到「未分类」。</p>' +
+    '<p class="m-desc">在题材内进一步归档照片；删除子目录会同时删除其中的照片（各端同步删除）。</p>' +
     '<div class="m-list">' + (rows || '<div class="m-empty">暂无子目录</div>') + '</div>' +
     '<div class="m-add"><input id="newSubName" placeholder="子目录名称，如：Q1 草稿" maxlength="20"><button id="btnAddSub2">添加</button></div>' +
     '<div class="m-actions"><button class="m-cancel" data-close>完成</button></div>';
@@ -1660,20 +1660,26 @@ function openSubManage(c){
     };
   });
   box.querySelectorAll('[data-sdel]').forEach(b => {
-    b.onclick = async () => {
+    b.onclick = () => {
       const s = b.dataset.sdel;
       const i = c.subs.indexOf(s);
       if (i < 0) return;
-      c.subs.splice(i, 1);
-      for (const m of state.meta.filter(m => collOf(m) === c.id && (m.sub || '') === s)){
-        m.sub = undefined; await dbPut(S_META, m);
-      }
-      await dbPut(S_COLLS, c);
-      if (state.view.sub === s) state.view.sub = undefined;
-      pushServerSettings();
-      renderAll();
-      openSubManage(c);
-      toast('已删除子目录「' + s + '」，照片回到未分类');
+      const tgt = state.meta.filter(m => collOf(m) === c.id && (m.sub || '') === s);
+      const box2 = $('#modalBox');
+      box2.innerHTML = '<h3>删除子目录「' + esc(s) + '」？</h3>' +
+        '<p class="m-desc">将同时删除其中的 ' + tgt.length + ' 张照片（各端同步删除，无法恢复）。</p>' +
+        '<div class="m-actions"><button class="m-cancel" data-close>取消</button><button class="m-ok m-danger" id="delSubOk">删除</button></div>';
+      openModal();
+      $('#delSubOk').onclick = async () => {
+        closeModal();
+        c.subs.splice(i, 1);
+        if (tgt.length) await deletePhotos(tgt.map(m => m.id));
+        await dbPut(S_COLLS, c);
+        if (state.view.sub === s) state.view.sub = undefined;
+        pushServerSettings();
+        renderAll();
+        openSubManage(c);
+      };
     };
   });
 }
@@ -1703,7 +1709,7 @@ function openCollManage(){
       '</div>';
   }).join('');
   box.innerHTML = '<h3>题材管理</h3>' +
-    '<p class="m-desc">侧边栏顶部就是题材入口；删除题材后，其中的照片会归入其余题材（至少保留一个题材）。</p>' +
+    '<p class="m-desc">侧边栏顶部就是题材入口；删除题材会同时删除其中的照片（各端同步删除，至少保留一个题材）。</p>' +
     '<div class="m-list">' + (lis || '<div class="m-empty">暂无题材</div>') + '</div>' +
     '<div class="m-add"><input id="newCollName" placeholder="新题材名称，如：摄影" maxlength="20"><button id="btnAddColl">添加</button></div>' +
     '<div class="m-actions"><button class="m-cancel" data-close>完成</button></div>';
@@ -1738,7 +1744,7 @@ function openCollManage(){
     };
   });
   box.querySelectorAll('[data-del]').forEach(b => {
-    b.onclick = async () => {
+    b.onclick = () => {
       const c = state.colls.find(x => x.id === b.dataset.del);
       if (!c) return;
       if (state.colls.length <= 1){
@@ -1746,18 +1752,22 @@ function openCollManage(){
         openCollManage();
         return;
       }
-      const fallback = state.colls.find(x => x.id !== c.id) || state.colls[0];
-      await dbDel(S_COLLS, c.id);
-      state.colls = state.colls.filter(x => x.id !== c.id);
-      for (const m of state.meta.filter(m => collOf(m) === c.id)){
-        m.collection = fallback.id;
-        await dbPut(S_META, m);
-      }
-      if (state.collection === c.id) state.collection = fallback.id;
-      renderAll();
-      pushServerSettings();
-      openCollManage();
-      toast('已删除「' + c.name + '」，照片已归入「' + fallback.name + '」');
+      const tgt = state.meta.filter(m => collOf(m) === c.id);
+      const box2 = $('#modalBox');
+      box2.innerHTML = '<h3>删除「' + esc(c.name) + '」？</h3>' +
+        '<p class="m-desc">将同时删除其中的 ' + tgt.length + ' 张照片（各端同步删除，无法恢复）。</p>' +
+        '<div class="m-actions"><button class="m-cancel" data-close>取消</button><button class="m-ok m-danger" id="delCollOk">删除</button></div>';
+      openModal();
+      $('#delCollOk').onclick = async () => {
+        closeModal();
+        await dbDel(S_COLLS, c.id);
+        state.colls = state.colls.filter(x => x.id !== c.id);
+        if (tgt.length) await deletePhotos(tgt.map(m => m.id));
+        if (state.collection === c.id) state.collection = (state.colls[0] || {}).id;
+        renderAll();
+        pushServerSettings();
+        openCollManage();
+      };
     };
   });
 }
@@ -2620,17 +2630,19 @@ function bindEvents(){
     const cur = state.colls.find(x => x.id === state.collection);
     const names = [...state.subSelSet];
     askConfirm('删除 ' + names.length + ' 个子目录？', async () => {
+      let cnt = 0;
       for (const s of names){
         const i = cur.subs.indexOf(s);
         if (i < 0) continue;
+        const tgt = state.meta.filter(m => collOf(m) === cur.id && (m.sub || '') === s);
         cur.subs.splice(i, 1);
-        for (const m of state.meta.filter(m => collOf(m) === cur.id && (m.sub || '') === s)){ m.sub = undefined; await dbPut(S_META, m); }
+        if (tgt.length){ await deletePhotos(tgt.map(m => m.id)); cnt += tgt.length; }
       }
       await dbPut(S_COLLS, cur);
       pushServerSettings();
       exitSubSel();
       renderAll();
-      toast('已删除 ' + names.length + ' 个子目录，照片回到未分类');
+      toast('已删除 ' + names.length + ' 个子目录及其中 ' + cnt + ' 张照片');
     });
   });
   $('#selClear').addEventListener('click', () => {
