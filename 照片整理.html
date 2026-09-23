@@ -3135,11 +3135,24 @@ async function syncOnce(cfg, label, onProg){
     // 2. 删除同步：本地删过的照片，云端一并删除
     const tbs = await getTombstones();
     let removed = 0;
+    const delHashes = new Set();
     for (const id of tbs){
       if (cloudMap[id]){
-        try{ await dav(cfg, 'DELETE', cloudP(id + cloudMap[id].ext)); }catch(e){}
+        const cc = cloudMap[id];
+        if (cc.hash && cc.hash !== null) delHashes.add(cc.hash);
+        try{ await dav(cfg, 'DELETE', cloudP(id + cc.ext)); }catch(e){}
         delete cloudMap[id];
         removed++;
+      }
+    }
+    // 同内容的其他云端条目一并删除（跨端同图不同 id 的残留，避免"删完又下"）
+    if (delHashes.size){
+      for (const [id2, c2] of Object.entries(cloudMap)){
+        if (c2.hash && delHashes.has(c2.hash)){
+          try{ await dav(cfg, 'DELETE', cloudP(id2 + c2.ext)); }catch(e){}
+          delete cloudMap[id2];
+          removed++;
+        }
       }
     }
     // 2.5 云端去重：同一内容的照片只保留一个（历史重复堆积清理）
@@ -3233,6 +3246,7 @@ async function syncOnce(cfg, label, onProg){
     for (const [id, c] of Object.entries(cloudMap)){
       if (_syncStop) break;
       if (cfg.type === 'staging' && c.m && c.m.sub && _SUB_DIRS[c.m.sub]) continue;
+      if (c.hash && delHashes.has(c.hash)) continue;
       dnIdx++;
       if (onProg) onProg(58 + Math.round(dnIdx / Math.max(1, dnTotal) * 37), '检查云端照片 ' + dnIdx + '/' + dnTotal);
       // 跨设备去重：本地已有同内容时保留最新版本（云端更新则同步名称，否则跳过）
