@@ -1299,7 +1299,6 @@ function renderGrid(){
     const uico = '<circle cx="12" cy="12" r="9"/><path d="M12 7v10M7 12h10"/>';
     let html = '<div class="coll-grid">';
     html += card('全部', '__all__', nAll, fico);
-    html += card('未分类', '', cntOf(''), uico);
     for (const s of subs) html += card(s, s, cntOf(s), fico);
     html += '<div class="coll-card add-sub" id="btnAddSubCard">' +
       '<div class="coll-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></div>' +
@@ -1557,7 +1556,7 @@ function renderSubBar(){
     const on = (t.sub === sub) ? ' on' : '';
     return '<button class="sub-chip' + on + '" data-sub="' + esc(sub) + '">' + esc(label) + '<span class="sc-cnt">' + fmtCount(count) + '</span></button>';
   };
-  let html = '<div class="sub-row">' + chip('未分类', '', cntOf(''));
+  let html = '<div class="sub-row">';
   for (const s of subs) html += chip(s, s, cntOf(s));
   html += '<button class="sub-chip add" id="btnAddSub"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>子目录</button></div>';
   bar.innerHTML = html;
@@ -2842,10 +2841,8 @@ async function importBackup(file){
    云同步：LeanCloud 多设备同步
 ===================================================================== */
 const _CLOUD_DIR = '美化成品';
-const _WM_DIR = '美化成品+水印';
-const _WM_SUB = '油画';
-function wmCollId(){ const cc = state.colls.find(x => x.name === '水印'); return cc ? cc.id : null; }
-function isWmOil(m){ const cid = wmCollId(); return !!(cid && m.collection === cid && (m.sub || '') === _WM_SUB); }
+/* 子目录 ↔ 真实文件夹 强绑定（油画题材下）：原图 → 美化成品；水印 → 美化成品+水印 */
+const _SUB_DIRS = { '原图': '美化成品', '水印': '美化成品+水印' };
 const _SETTINGS_FILE = '相册设置.json';
 let _cloudSyncBusy = false, _cloudAutoTimer = null, _cloudFailStreak = 0, _syncStop = false;
 
@@ -3033,6 +3030,16 @@ async function davGetJson(cfg, path){
   try{ return await res.json(); }catch(e){ return null; }
 }
 
+async function davHead(cfg, path){
+  try{
+    const res = await fetch(davUrl(cfg, path), {
+      method: 'HEAD',
+      headers: { 'Authorization': 'Basic ' + btoa(cfg.user + ':' + cfg.pass) }
+    });
+    return res.status === 200;
+  }catch(e){ return false; }
+}
+
 function setCloudStatus(txt, kind){
   const el = $('#netStatus');
   if (!el) return;
@@ -3156,6 +3163,7 @@ async function syncOnce(cfg, label, onProg){
     let upIdx = 0;
     for (const m of state.meta){
       if (_syncStop) break;
+      if (cfg.type === 'staging' && m.sub && _SUB_DIRS[m.sub]) continue;
       upIdx++;
       if (onProg) onProg(Math.round(upIdx / Math.max(1, upTotal) * 55), '上传 ' + upIdx + '/' + upTotal + ' · ' + (m.name || '照片'));
       // 跨设备去重：同内容云端已存在时，保留最新版本（本地更新则覆盖云端元数据，否则跳过）
@@ -3210,6 +3218,7 @@ async function syncOnce(cfg, label, onProg){
     let dnIdx = 0;
     for (const [id, c] of Object.entries(cloudMap)){
       if (_syncStop) break;
+      if (cfg.type === 'staging' && c.m && c.m.sub && _SUB_DIRS[c.m.sub]) continue;
       dnIdx++;
       if (onProg) onProg(58 + Math.round(dnIdx / Math.max(1, dnTotal) * 37), '检查云端照片 ' + dnIdx + '/' + dnTotal);
       // 跨设备去重：本地已有同内容时保留最新版本（云端更新则同步名称，否则跳过）
@@ -3291,73 +3300,63 @@ async function localDedup(){
   return removed;
 }
 
-/* 水印·油画 ↔ 电脑本地目录「美化成品+水印」强绑定强同步（同删同加）
-   只对暂存站（staging）配置执行；应用上传/删除同步到目录，同时反向扫描外部变更 */
-async function syncWmDir(cfg, onProg){
-  const cid = wmCollId();
-  if (!cid) return { up:0, dn:0, removed:0 };
-  const dir = _WM_DIR;
-  if (onProg) onProg(2, '准备目录');
+/* 子目录 ↔ 真实文件夹 强绑定同步（同删同加，保持去重）
+   只对暂存站（staging）配置执行；每个绑定子目录独立清单 _bind.json
+   原图 → 美化成品；水印 → 美化成品+水印 */
+async function syncSubDir(cfg, subName, dirName, onProg){
+  const cid = 'default';
+  const dir = dirName;
+  if (onProg) onProg(2, '准备「' + subName + '」');
   try{ await dav(cfg, 'MKCOL', dir); }catch(e){}
-  // 1. 读目录清单
+  // 1. 读绑定目录清单
   let wm = null;
   try{
-    const res = await dav(cfg, 'GET', dir + '/manifest.json');
+    const res = await dav(cfg, 'GET', dir + '/_bind.json');
     if (res.status === 200) wm = await res.json();
   }catch(e){}
   const wmMap = (wm && wm.photos) ? wm.photos : {};
-  // 2. 目录清单去重：同一内容只留一个
+  // 2. 目录清单去重：同一内容只保留最新一条
   let removed = 0;
   {
-    const seen = new Map();
-    const drop = [];
+    const groups = new Map();
     for (const [id, cc] of Object.entries(wmMap)){
       const key = (cc.hash && cc.hash !== null) ? ('h:' + cc.hash) : ('s:' + (cc.size || 0) + ':' + (cc.ext || ''));
-      if (seen.has(key)) drop.push(id); else seen.set(key, id);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push([id, cc]);
     }
-    for (const id of drop){
-      const cc = wmMap[id];
-      try{ await dav(cfg, 'DELETE', dir + '/' + (cc.fname || (id + cc.ext))); }catch(e){}
-      delete wmMap[id];
-      removed++;
+    for (const [key, arr] of groups){
+      if (arr.length <= 1) continue;
+      arr.sort((a, b) => (b[1].pt || 0) - (a[1].pt || 0));
+      for (const [id, cc] of arr.slice(1)){
+        try{ await dav(cfg, 'DELETE', dir + '/' + (cc.fname || (id + cc.ext))); }catch(e){}
+        delete wmMap[id];
+        removed++;
+      }
     }
   }
-  // 3. 上传：本地「水印→油画」照片同步到目录
+  // 3. 上传：本端 sub===subName 的照片 → 落盘（HEAD 检查缺失才传）
   let up = 0;
   const wmArr = Object.values(wmMap);
+  const upList = state.meta.filter(m => (m.sub || '') === subName && !(m.hash && wmArr.some(x => x.hash && x.hash === m.hash && (x.pt || 0) >= (m.addedAt || 0))));
   let idx = 0;
-  const wmUpList = state.meta.filter(isWmOil);
-  for (const m of wmUpList){
+  for (const m of upList){
     if (_syncStop) break;
     idx++;
-    if (onProg) onProg(5 + Math.round(idx / Math.max(1, wmUpList.length) * 55), '上传 ' + idx + '/' + wmUpList.length);
-    if (m.hash){
-      let dupId = null, dup = null;
-      for (const [k, v] of Object.entries(wmMap)){
-        if (v.hash && v.hash === m.hash && k !== m.id){ dupId = k; dup = v; break; }
-      }
-      if (dup){
-        if ((m.addedAt || 0) > (dup.pt || 0)){
-          wmMap[dupId] = { m: Object.assign({}, dup.m, { name: m.name || dup.m.name, addedAt: m.addedAt || dup.m.addedAt }), hash: m.hash, ext: dup.ext, fname: dup.fname || dupId + dup.ext, size: dup.size, pt: m.addedAt || Date.now() };
-          up++;
-        }
-        continue;
-      }
-    }
+    if (onProg) onProg(5 + Math.round(idx / Math.max(1, upList.length) * 55), '上传 ' + idx + '/' + upList.length + ' · ' + (m.name || ''));
+    const rec = await dbGet(S_BLOBS, m.id + ':f');
+    if (!rec || !rec.blob) continue;
+    const ext = ((m.name && m.name.match(/\.\w+$/)) || ['.jpg'])[0];
+    const fname = m.id + ext;
     const cc = wmMap[m.id];
-    if (!cc || cc.hash !== (m.hash || null)){
-      const rec = await dbGet(S_BLOBS, m.id + ':f');
-      if (!rec || !rec.blob) continue;
-      const ext = ((m.name && m.name.match(/\.\w+$/)) || ['.jpg'])[0];
-      const fname = m.id + ext;
-      const res = await dav(cfg, 'PUT', dir + '/' + fname, rec.blob);
-      if (!res.ok) throw new Error('水印目录上传失败（' + res.status + '）');
-      wmMap[m.id] = { m: Object.assign({}, m), hash: m.hash || null, ext: ext, fname: fname, size: rec.blob.size, pt: m.addedAt || Date.now() };
-      up++;
-    }
+    if (cc && cc.hash === (m.hash || null) && (cc.pt || 0) >= (m.addedAt || 0)) continue;
+    const need = await davHead(cfg, dir + '/' + fname);
+    if (need && cc && (cc.pt || 0) >= (m.addedAt || 0)) continue;
+    const res = await dav(cfg, 'PUT', dir + '/' + fname, rec.blob);
+    if (!res.ok) throw new Error('「' + subName + '」上传失败（' + res.status + '）');
+    wmMap[m.id] = { m: Object.assign({}, m), hash: m.hash || null, ext: ext, fname: fname, size: rec.blob.size, pt: m.addedAt || Date.now() };
+    up++;
   }
-  if (_syncStop) return { up: up, dn: 0, removed: removed, imp: 0, extDel: 0 };
-  // 4. 删除：tombstone 中的「水印→油画」照片在目录一并删除
+  // 4. 删除：tombstone 中的照片在目录一并删除
   let del = 0;
   const tbs = await getTombstones();
   for (const id of tbs){
@@ -3372,12 +3371,12 @@ async function syncWmDir(cfg, onProg){
   let imp = 0, extDel = 0;
   try{
     const base = (cfg.server || '').replace(/\/+$/, '');
-    const res = await fetch(base + '/' + _WM_DIR + '/list', { cache: 'no-store' });
+    const res = await fetch(base + '/' + dir + '/list', { cache: 'no-store' });
     if (res.status === 200){
       const j = await res.json();
       const files = (j && j.files) || [];
       const fmap = new Map(files.map(f => [f.name, f]));
-      // 5a. 目录清单有、实况没有 → 外部删除 → 本地照片一并删除（同删）
+      // 5a. 清单有、实况没有 → 外部删除 → 本地照片一并删除（同删）
       for (const id of Object.keys(wmMap)){
         const cc = wmMap[id];
         if (!fmap.has(cc.fname || (id + cc.ext))){
@@ -3386,28 +3385,27 @@ async function syncWmDir(cfg, onProg){
           extDel++;
         }
       }
-      // 5b. 实况有、目录清单没有 → 外部新增 → 导入到「水印→油画」（同加，hash 去重）
+      // 5b. 实况有、清单没有 → 外部新增 → 导入到「油画 → subName」（同加，去重）
       for (const f of files){
-        if (f.name === 'manifest.json') continue;
-        if (Object.values(wmMap).some(x => (x.fname || (x.id !== undefined ? '' : '')) === f.name)) continue;
+        if (Object.values(wmMap).some(x => (x.fname || '') === f.name)) continue;
         if (f.hash && state.meta.some(x => x.hash && x.hash === f.hash)) continue;
         const r = await dav(cfg, 'GET', dir + '/' + f.name);
         if (!r.ok) continue;
         const blob = await r.blob();
         const ext = ((f.name.match(/\.\w+$/)) || ['.jpg'])[0];
         const nid = uid();
-        const nm = { id: nid, name: f.name, addedAt: Date.now(), collection: cid, sub: _WM_SUB, hash: f.hash || null };
+        const nm = { id: nid, name: f.name, addedAt: Date.now(), collection: cid, sub: subName, hash: f.hash || null };
         await applyDownloaded(nid, { m: nm, hash: f.hash || null, ext: ext, size: f.size, pt: Date.now() }, blob);
         wmMap[nid] = { m: nm, hash: f.hash || null, ext: ext, fname: f.name, size: f.size, pt: Date.now() };
         imp++;
       }
     }
   }catch(e){}
-  // 6. 写回目录清单
-  if (onProg) onProg(97, '写回目录清单');
-  const mres = await dav(cfg, 'PUT', dir + '/manifest.json',
+  // 6. 写回绑定目录清单
+  if (onProg) onProg(97, '写回清单');
+  const mres = await dav(cfg, 'PUT', dir + '/_bind.json',
     new Blob([JSON.stringify({ photos: wmMap, updatedAt: Date.now() })], { type: 'application/json' }));
-  if (!mres.ok) throw new Error('水印目录清单写入失败（' + mres.status + '）');
+  if (!mres.ok) throw new Error('「' + subName + '」清单写入失败（' + mres.status + '）');
   return { up: up, dn: 0, removed: removed + del, imp: imp, extDel: extDel };
 }
 
@@ -3439,10 +3437,15 @@ async function cloudSync(manual){
         up += r.up; dn += r.dn; removed += r.removed;
         let wr = null;
         if (c.type === 'staging'){
-          try{
-            wr = await syncWmDir(c, (p, msg) => setSyncProg(90 + Math.round(p * 0.08), c.name + ' · 水印目录 ' + msg));
-          }catch(e2){
-            results.push({ name: c.name + '（水印目录）', ok: false, msg: (e2 && e2.message) || '水印目录同步失败' });
+          for (const [subN, dirN] of Object.entries(_SUB_DIRS)){
+            if (_syncStop) break;
+            try{
+              const sr = await syncSubDir(c, subN, dirN, (p, msg) => setSyncProg(90 + Math.round(p * 0.08), c.name + ' · ' + subN + ' ' + msg));
+              if (!wr) wr = { up:0, dn:0, removed:0, imp:0, extDel:0 };
+              wr.up += sr.up || 0; wr.removed += sr.removed || 0;
+            }catch(e2){
+              results.push({ name: c.name + '（' + subN + '）', ok: false, msg: (e2 && e2.message) || '目录同步失败' });
+            }
           }
         }
         if (wr){ up += wr.up || 0; removed += wr.removed || 0; }
@@ -3587,11 +3590,27 @@ if ('serviceWorker' in navigator && location.protocol === 'https:'){
     state.colls = [{ id: 'default', name: '手绘油画', addedAt: Date.now(), builtin: true }];
     await dbPut(S_COLLS, state.colls[0]);
   }
-  // 预置「水印」题材：手动导入（不自动识别），可正常多端局域网同步；不需要可在题材管理里删除
-  if (!state.colls.some(c => c.name === '水印')){
-    const wm = { id: 'watermark', name: '水印', addedAt: Date.now() };
-    state.colls.push(wm);
-    await dbPut(S_COLLS, wm);
+  // 结构迁移：删除「水印」题材（照片归入「油画 → 水印」），油画下确保 原图/水印 子目录
+  {
+    const wmColl = state.colls.find(x => x.id === 'watermark' || x.name === '水印');
+    const dflt = state.colls.find(x => x.id === 'default') || state.colls[0];
+    if (dflt){
+      if (!dflt.subs) dflt.subs = [];
+      for (const s of ['原图', '水印']) if (!dflt.subs.includes(s)) dflt.subs.push(s);
+      await dbPut(S_COLLS, dflt);
+    }
+    if (wmColl){
+      for (const m of state.meta){
+        if (m.collection === wmColl.id){
+          m.collection = dflt ? dflt.id : m.collection;
+          if (!m.sub) m.sub = '水印';
+          await dbPut(S_META, m);
+        }
+      }
+      await dbDel(S_COLLS, wmColl.id);
+      state.colls = state.colls.filter(x => x.id !== wmColl.id);
+      if (state.collection === wmColl.id && dflt) state.collection = dflt.id;
+    }
   }
   state.collection = 'default';
   state.folders = await dbAll(S_FOLDERS);
