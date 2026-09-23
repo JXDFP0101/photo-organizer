@@ -3255,6 +3255,31 @@ async function syncOnce(cfg, label, onProg){
       }
     }
     if (_syncStop) return { up: up, dn: dn, removed: removed, stopped: true };
+    // 4.5 对账：云端清单里没有的本地照片 → 本地删除（保持各端一致；
+    //      仅当云端清单更新时间晚于照片加入时间才删，避免误删本端新上传；
+    //      绑定子目录照片由各自专属清单管理，这里跳过）
+    {
+      const upd = (manifest && manifest.updatedAt) || Date.now();
+      const tbsSet = new Set(tbs);
+      let rmLocal = 0;
+      for (const m of state.meta){
+        if (_syncStop) break;
+        if (cfg.type === 'staging' && m.sub && _SUB_DIRS[m.sub]) continue;
+        if (cloudMap[m.id] || tbsSet.has(m.id)) continue;
+        if ((m.addedAt || 0) >= (upd - 1000)) continue;
+        await dbDel(S_META, m.id);
+        await dbDel(S_BLOBS, m.id + ':t');
+        await dbDel(S_BLOBS, m.id + ':f');
+        const u = state.thumbs.get(m.id);
+        if (u) URL.revokeObjectURL(u);
+        state.thumbs.delete(m.id);
+        state.selected.delete(m.id);
+        rmLocal++;
+      }
+      if (rmLocal){
+        state.meta = state.meta.filter(x => cloudMap[x.id] || tbsSet.has(x.id) || (cfg.type === 'staging' && x.sub && _SUB_DIRS[x.sub]));
+      }
+    }
     // 5. 写回清单（写入同步目录；旧版写根目录会被 NAS 拒绝）
     const mres = await dav(cfg, 'PUT', cloudP('manifest.json'),
       new Blob([JSON.stringify({ photos: cloudMap, updatedAt: Date.now() })], { type: 'application/json' }));
